@@ -50,8 +50,8 @@ TOKEN_REG = [
     ("MISMATCH", r'.'),
 ]
 
-# Reserved keywords to double check Identifiers
-RESERVED_KEYWORDS = {
+# Reserved keywords to double check identifiers
+RES_KEYWORDS = {
     "class", "self", "super", "nil", "true", "false",
     "Object", "Nil", "True", "False", "Integer", "String", "Block"
 }

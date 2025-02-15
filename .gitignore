@@ -1,0 +1,39 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environment
+venv/
+ENV/
+env/
+*.egg
+
+# Test directories
+testdir/
+
+# Log files
+*.log
+
+# Zip files
+*.zip
+
+# IDE/editor folders
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook files
+.ipynb_checkpoints/
+
+# Other possible temporary files
+*.bak
+*.swp
+*.swo
