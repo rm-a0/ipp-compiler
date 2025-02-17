@@ -1,5 +1,4 @@
 #!/usr/bin/env python3.11
-
 import sys
 import re
 
@@ -15,56 +14,6 @@ SEMANTIC_ERROR_MISSMATCH = 33
 SEMANTIC_ERROR_VAR_COLLISION = 34
 INTERNAL_ERROR = 99
 
-# Regex for tokens
-TOKEN_TOUPLE_ARR = [
-    # Reserved keywords
-    ("CLASS_KW", r'class'),
-    ("SELF_KW", r'self'),
-    ("SUPER_KW", r'super'),
-    ("NIL_KW", r'nil'),
-    ("TRUE_KW", r'true'),
-    ("FALSE_KW", r'false'),
-    # Builtin classes
-    ("OBJECT_BC", r'Object'),
-    ("NIL_BC", r'Nil'),
-    ("TRUE_BC", r'True'),
-    ("FALSE_BC", r'False'),
-    ("INT_BC", r'Integer'),
-    ("STRING_BC", r'String'),
-    ("BLOCK_BC", r'Block'),
-    # Identifiers
-    ("IDENTIFIER", r'[a-z_][a-zA-Z0-9_]*'),
-    ("CLASS_IDENTIFIER", r'[A-Z][a-zA-Z0-9]*'),
-    # Other tokens
-    ("ASSIGN", r':='),
-    ("DOT", r'\.'),
-    ("COLON", r':'),
-    ("L_BRACE", r'\{'),
-    ("R_BRACE", r'\}'),
-    ("L_BRACKET", r'\['),
-    ("R_BRACKET", r'\]'),
-    ("PIPE", r'\|'),
-    ("OPERATOR", r'[+\-*/]'),
-    ("STRING", r"'([^'\\]*(\\['n\\][^'\\]*)*)'"),
-    ("INTEGER", r'[+-]?\d+'),
-    # Whitespace and comments 
-    ("WHITESPACE", r'[ \t]+'),
-    ("NEWLINE", r'\n'),
-    ("COMMENT", r'".*?"'),
-    # Invalid token
-    ("INVALID", r'.')
-]
-
-# Combine regex patterns
-TOKEN_REGEX = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in TOKEN_TOUPLE_ARR)
-get_token = re.compile(TOKEN_REGEX).match
-
-# Reserved keywords to double check identifiers
-RES_KEYWORDS = {
-    "class", "self", "super", "nil", "true", "false",
-    "Object", "Nil", "True", "False", "Integer", "String", "Block"
-}
-
 # Token class
 class Token: 
     def __init__(self, token_type, value = None):
@@ -79,23 +28,74 @@ class Lexer:
     def __init__(self, src_code):
         self.src_code = src_code
         self.tokens = []
+        self.token_tuple_arr = [
+            # Reserved keywords
+            ("CLASS_KW", r'class'),
+            ("SELF_KW", r'self'),
+            ("SUPER_KW", r'super'),
+            ("NIL_KW", r'nil'),
+            ("TRUE_KW", r'true'),
+            ("FALSE_KW", r'false'),
+            # Builtin classes
+            ("OBJECT_BC", r'Object'),
+            ("NIL_BC", r'Nil'),
+            ("TRUE_BC", r'True'),
+            ("FALSE_BC", r'False'),
+            ("INT_BC", r'Integer'),
+            ("STRING_BC", r'String'),
+            ("BLOCK_BC", r'Block'),
+            # Identifiers
+            ("IDENTIFIER", r'[a-z_][a-zA-Z0-9_]*'),
+            ("CLASS_IDENTIFIER", r'[A-Z][a-zA-Z0-9]*'),
+            # Other tokens
+            ("ASSIGN", r':='),
+            ("DOT", r'\.'),
+            ("COLON", r':'),
+            ("L_BRACE", r'\{'),
+            ("R_BRACE", r'\}'),
+            ("L_BRACKET", r'\['),
+            ("R_BRACKET", r'\]'),
+            ("PIPE", r'\|'),
+            ("OPERATOR", r'[+\-*/]'),
+            ("STRING", r"'([^'\\]*(\\['n\\][^'\\]*)*)'"),
+            ("INTEGER", r'[+-]?\d+'),
+            # Whitespace and comments
+            ("WHITESPACE", r'[ \t]+'),
+            ("NEWLINE", r'\n'),
+            ("COMMENT", r'".*?"'),
+            # Invalid token
+            ("INVALID", r'.')
+        ]
+        self.reserved_keywords = {
+            "class", "self", "super", "nil", "true", "false",
+            "Object", "Nil", "True", "False", "Integer", "String", "Block"
+        }
+        # Combine regex patterns
+        self.token_regex = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in self.token_tuple_arr)
+        self.get_token = re.compile(self.token_regex).match
 
-    # Populate token array in Lexer
+    # Populate token array
     def tokenize(self):
         idx = 0
         while idx < len(self.src_code):
-            match = get_token(self.src_code, idx)
+            match = self.get_token(self.src_code, idx)
             if not match:
                 sys.exit(LEXICAL_ERROR)
 
             token_type = match.lastgroup
-            # Skip whitespace
-            if token_type in {"WHITESPACE", "NEWLINE"}:
+            # Skip whitespace and comments
+            if token_type in {"WHITESPACE", "NEWLINE", "COMMENT"}:
                 pass
             # Create token
             else:
+                # For identifiers, operators, strings, and integers, include the value
                 if token_type in {"IDENTIFIER", "CLASS_IDENTIFIER", "OPERATOR", "STRING", "INTEGER"}:
-                    token = Token(token_type, match.group(token_type))
+                    token_value = match.group(token_type)
+                    # Double-check identifiers against reserved keywords
+                    if token_type in {"IDENTIFIER", "CLASS_IDENTIFIER"} and token_value in self.reserved_keywords:
+                        sys.exit(LEXICAL_ERROR)
+                    token = Token(token_type, token_value)
+                # Tokens with self-describing types do not need a value
                 else:
                     token = Token(token_type)
                 self.tokens.append(token)
@@ -108,6 +108,7 @@ class Parser:
         self.tokens = tokens
         self.state = "START"
 
+    # Parse tokens
     def parse(self):
         for token in self.tokens:
             print(token)
