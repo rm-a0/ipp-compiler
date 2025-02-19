@@ -1,5 +1,24 @@
 class Main : Object {
-    
+    compute:and:and: "<- definice metody - selektor se třemi parametry"
+    [ :x :y :z |
+        "zaslání zpr. 'plus:' objektu x - selektor s jedním argumentem"
+        a := x plus: y.
+        
+        "zaslání zpr. 'vysl:' sobě samému - nastaví instanční atribut 'vysl'"
+        _ := self vysl: a.
+        
+        "zpráva 'vysl' se zašle sobě , výsledkem je ref. na objekt vysl;
+        tomuto objektu se pak zašle zpráva 'greaterThan:' s arg. 0."
+        _ := ((self vysl) greaterThan: 0)
+        
+        "výsledkem je objekt typu True nebo False , kterému se zašle zpráva
+        'ifTrue:ifFalse:', argumenty jsou bezparametrické bloky"
+        ifTrue: [ |
+            u := self vysl: 1.
+        ]
+        ifFalse: [ | ].
+    ]
+}
     run "<- definice metody - bezparametrický selektor run"
     [ |
         "zaslání zprávy 'compute:and:and:' sobě samému - selektor se dvěma arg."
