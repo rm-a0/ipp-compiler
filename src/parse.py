@@ -31,9 +31,56 @@ class Token:
             return False
         return True
 
-# AST class
+# ASTNode classes
 class ASTNode:
-    pass
+    def accept(self, visitor):
+        raise NotImplementedError
+
+class ProgramNode(ASTNode):
+    def __init__(self, class_nodes):
+        self.class_nodes = class_nodes
+
+    def accept(self, visitor):
+        return visitor.visit_program(self)
+
+class ClassNode(ASTNode):
+    def __init__(self, identifier, class_type, methods):
+        self.identifier = identifier
+        self.type = class_type
+        self.methods = methods
+
+    def accept(self, visitor):
+        return visitor.visit_class(self)
+
+class MethodNode(ASTNode):
+    def __init__(self, identifiers):
+        self.identifiers = identifiers
+
+    def accept(self, visitor):
+        return visitor.visit_method(self)
+
+class BlockNode(ASTNode):
+    def __init__(self, parameters, statements):
+        self.parameters = parameters
+        self.statements = statements
+
+    def accept(self, visitor):
+        return visitor.visit_block(self)
+
+# AST Visitor class
+class ASTVisitor:
+    def visit_program(sefl, node):
+        for node in nodes.class_nodes:
+            node.accept(self)
+
+    def visit_class(sefl, node):
+        pass
+
+    def visit_method(sefl, node):
+        pass
+
+    def visit_block(self, node):
+        pass
 
 # Lexer class
 class Lexer:
