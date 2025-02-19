@@ -68,6 +68,7 @@ class Token:
 
     # Check if token attributes are the same as expected attributes
     def check_token(self, expected_type, expected_value=None):
+        print(self)
         if self.type != expected_type:
             return False
         if expected_value is not None and self.value != expected_value:
@@ -213,7 +214,7 @@ class Parser:
         self.tokens = tokens
         self.token_len = len(tokens)
         self.token_idx = 0
-        self.current_token = tokens[0] if tokens else None
+        self.current_token = tokens[0] if tokens else Token(TokenType.EOF)
         self.builtin_classes = {
             TokenType.OBJECT_BC,
             TokenType.NIL_BC,
@@ -238,11 +239,11 @@ class Parser:
             self.token_idx += 1
             self.current_token = self.tokens[self.token_idx]
         else:
-            self.current_token = Token(TokenType.INVALID)
+            self.current_token = Token(TokenType.EOF)
 
     # Check current token if it matches expected type, return current token and advance token
     def consume_token(self, expected_type: TokenType):
-        if self.current_token is None or not self.current_token.check_token(expected_type):
+        if not self.current_token.check_token(expected_type):
             sys.exit(ErrorType.SYNTAX_ERROR.value)
         token = self.current_token
         self.advance_token()
@@ -292,7 +293,7 @@ class Parser:
     # Parse program and return root of AST (Program node)
     def parse_program(self):
         class_nodes = []
-        while self.current_token is not None:
+        while not self.current_token.check_token(TokenType.EOF):
             self.consume_token(TokenType.CLASS_KW)
             class_nodes.append(self.parse_class())
 
