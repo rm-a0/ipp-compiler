@@ -23,6 +23,18 @@ class Token:
     def __repr__(self):
         return f"Token(type: {self.type!r}, value: {self.value!r})"
 
+    # Check if token attributes are the same as expected attributes
+    def check_token(self, expected_type, expected_value = None):
+        if self.type != expected_type:
+            return False
+        if expected_value is not None and self.value != expected_value:
+            return False
+        return True
+
+# AST class
+class ASTNode:
+    pass
+
 # Lexer class
 class Lexer:
     def __init__(self, src_code):
@@ -66,13 +78,13 @@ class Lexer:
             # Invalid token
             ("INVALID", r'.')
         ]
-        self.reserved_keywords = {
-            "class", "self", "super", "nil", "true", "false",
-            "Object", "Nil", "True", "False", "Integer", "String", "Block"
-        }
         # Combine regex patterns
+        self.get_token = self.compile_regex()
+
+    # Combine and compile regex patterns
+    def compile_regex(self):
         self.token_regex = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in self.token_tuple_arr)
-        self.get_token = re.compile(self.token_regex).match
+        return re.compile(self.token_regex).match
 
     # Populate token array
     def tokenize(self):
@@ -90,11 +102,7 @@ class Lexer:
             else:
                 # For identifiers, operators, strings, and integers, include the value
                 if token_type in {"IDENTIFIER", "CLASS_IDENTIFIER", "OPERATOR", "STRING", "INTEGER"}:
-                    token_value = match.group(token_type)
-                    # Double-check identifiers against reserved keywords
-                    if token_type in {"IDENTIFIER", "CLASS_IDENTIFIER"} and token_value in self.reserved_keywords:
-                        sys.exit(LEXICAL_ERROR)
-                    token = Token(token_type, token_value)
+                    token = Token(token_type, match.group(token_type))
                 # Tokens with self-describing types do not need a value
                 else:
                     token = Token(token_type)
@@ -106,20 +114,46 @@ class Lexer:
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
-        self.state = "START"
+        self.token_len = len(tokens)
+        self.token_idx = 0
+        self.current_token = tokens[0] if tokens else None
 
-    # Parse tokens
-    def parse(self):
-        for token in self.tokens:
-            print(token)
+    # Advance current token and increement token_idx if possible
+    def advance_token(self):
+        if self.token_idx < self.token_len:
+            self.token_idx += 1
+            self.current_token = self.tokens[self.token_idx]
+        else:
+            self.current_token = None
+
+    # Check current token if it matches expected type, return current token and advance token
+    def consume_token(self, expected_type):
+        if not self.current_token.check_token(expected_type) or self.current_token is None:
+            sys.exit(SYNYAX_ERROR)
+        token = self.current_token
+        self.advance_token()
+        return token
+
+    # Parse class
+    def parse_class(self):
+        return False
+
+    # Parse program
+    def parse_program(self):
+        while self.current_token is not None:
+            self.consume_token("CLASS_KW")
+            class_node = self.parse_class
+        return 
+
 
 def main():
-    src_code = sys.stdin.read()
-    lexer = Lexer(src_code)
+    lexer = Lexer(sys.stdin.read())
     lexer.tokenize()
 
     parser = Parser(lexer.tokens)
-    parser.parse()
+    parser.parse_program()
+
+    #semantic_analyzer = SemanticAnalyzer(ast)
 
 if __name__ == "__main__":
     main()
