@@ -45,6 +45,8 @@ class TokenType(Enum):
     R_BRACE = "R_BRACE"
     L_BRACKET = "L_BRACKET"
     R_BRACKET = "R_BRACKET"
+    L_PARENT = "L_PARENT"
+    R_PARENT = "R_PARENT"
     PIPE = "PIPE"
     OPERATOR = "OPERATOR"
     STRING = "STRING"
@@ -88,9 +90,9 @@ class ProgramNode(ASTNode):
         return visitor.visit_program(self)
 
 class ClassNode(ASTNode):
-    def __init__(self, identifier, class_type, methods):
+    def __init__(self, identifier, parent_class, methods):
         self.identifier = identifier
-        self.type = class_type
+        self.parent_class = parent_class
         self.methods = methods
 
     def accept(self, visitor):
@@ -112,6 +114,14 @@ class BlockNode(ASTNode):
     def accept(self, visitor):
         return visitor.visit_block(self)
 
+class StatementNode(ASTNode):
+    def __init__(self, identifier, expression):
+        self.identifier = identifier
+        self.expression = expression
+
+    def accept(self, visitor):
+        return visitor.visit_statement(self)
+
 # AST Visitor class
 class ASTVisitor:
     def visit_program(self, node):
@@ -125,6 +135,9 @@ class ASTVisitor:
         pass
 
     def visit_block(self, node):
+        pass
+    
+    def visit_statement(self, node):
         pass
 
 # Lexer class
@@ -158,6 +171,8 @@ class Lexer:
             (TokenType.R_BRACE, r'\}'),
             (TokenType.L_BRACKET, r'\['),
             (TokenType.R_BRACKET, r'\]'),
+            (TokenType.L_PARENT, r'\('),
+            (TokenType.R_PARENT, r'\)'),
             (TokenType.PIPE, r'\|'),
             (TokenType.OPERATOR, r'[+\-*/]'),
             (TokenType.STRING, r"'([^'\\]*(\\['n\\][^'\\]*)*)'"),
@@ -165,7 +180,7 @@ class Lexer:
             # Whitespace and comments
             (TokenType.WHITESPACE, r'[ \t]+'),
             (TokenType.NEWLINE, r'\n'),
-            (TokenType.COMMENT, r'".*?"'),
+            (TokenType.COMMENT, r'"(?s:.*?)"'),
             # Invalid token
             (TokenType.INVALID, r'.')
         ]
@@ -249,9 +264,36 @@ class Parser:
         self.advance_token()
         return token
 
+    # Parse expression
+    def parse_expression(self):
+        while not self.current_token.check_token(TokenType.DOT):
+            self.advance_token()
+        return 1
+
+    # Parse statement
+    def parse_statemenet(self):
+        identifier = self.consume_token(TokenType.IDENTIFIER)
+        self.consume_token(TokenType.ASSIGN)
+        expression = self.parse_expression()
+        self.consume_token(TokenType.DOT)
+
+        return StatementNode(identifier, expression)
+
     # Parse block
     def parse_block(self):
-        return "TODO"
+        self.consume_token(TokenType.L_BRACKET)
+        parameteres = []
+        while not self.current_token.check_token(TokenType.PIPE):
+            self.consume_token(TokenType.COLON)
+            parameteres.append(self.consume_token(TokenType.IDENTIFIER))
+        self.consume_token(TokenType.PIPE)
+
+        statements = []
+        while not self.current_token.check_token(TokenType.R_BRACKET):
+            statements.append(self.parse_statemenet())
+        self.consume_token(TokenType.R_BRACKET)
+
+        return BlockNode(parameteres, statements)
 
     # Parse method
     def parse_method(self):
@@ -277,7 +319,7 @@ class Parser:
         # Check if current token type is in builtin classes
         if self.current_token.type not in self.builtin_classes:
             sys.exit(ErrorType.SYNTAX_ERROR.value)
-        class_type = self.current_token
+        parent_class = self.current_token
         self.advance_token()
         self.consume_token(TokenType.L_BRACE)
 
@@ -288,7 +330,7 @@ class Parser:
 
         self.consume_token(TokenType.R_BRACE)
 
-        return ClassNode(class_id, class_type, methods)
+        return ClassNode(class_id, parent_class, methods)
 
     # Parse program and return root of AST (Program node)
     def parse_program(self):
