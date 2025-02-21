@@ -3,6 +3,7 @@ import sys
 import re
 import argparse
 from enum import Enum
+from abc import ABC, abstractmethod
 
 # Error types
 class ErrorType(Enum):
@@ -147,30 +148,62 @@ class SelectorNode(ASTNode):
     def accept(self, visitor):
         return visitor.visit_selector(self)
 
-# AST Visitor class
-class ASTVisitor:
+# ASTVisitor interface
+class ASTVisitor(ABC):
+    @abstractmethod
     def visit_program(self, node):
-        for node in node.class_nodes:
-            node.accept(self)
-
+        pass
+    @abstractmethod
     def visit_class(self, node):
         pass
+    @abstractmethod
+    def visit_method(self, node):
+        pass
+    @abstractmethod
+    def visit_block(self, node):
+        pass
+    @abstractmethod
+    def visit_statement(self, node):
+        pass
+    @abstractmethod
+    def visit_expression(self, node):
+        pass
+    @abstractmethod
+    def visit_literal(self, node):
+        pass
+    @abstractmethod
+    def visit_selector(self, node):
+        pass
+
+# XMLVisitor class
+class XMLVisitor(ASTVisitor):
+    def visit_program(self, node):
+        description = ""
+        description_attr = f' description="{description}"' if description else ""
+        xml = f'<program language="SOL25"{description_attr}>\n'
+        for class_node in node.class_nodes:
+            xml += class_node.accept(self)
+        xml += "</program>"
+        return xml
+
+    def visit_class(self, node):
+        xml = f'<class name="{node.identifier}" parent="{node.parent_class}">\n'
+        for method_node in node.methods:
+            print(1)
+            # xml += method_node.accept(self)
+        xml += "</class>\n"
+        return xml
 
     def visit_method(self, node):
         pass
-
     def visit_block(self, node):
         pass
-    
     def visit_statement(self, node):
         pass
-
     def visit_expression(self, node):
         pass
-
     def visit_literal(self, node):
         pass
-
     def visit_selector(self, node):
         pass
 
@@ -245,12 +278,7 @@ class Lexer:
             else:
                 # Convert token_type string to TokenType enum
                 token_type_enum = TokenType[token_type]
-                # For identifiers, operators, strings, and integers, include the value
-                if token_type_enum in {TokenType.IDENTIFIER, TokenType.CLASS_IDENTIFIER, TokenType.OPERATOR, TokenType.STRING, TokenType.INTEGER}:
-                    token = Token(token_type_enum, token_value)
-                # Tokens with self-describing types do not need a value
-                else:
-                    token = Token(token_type_enum)
+                token = Token(token_type_enum, token_value)
                 tokens.append(token)
 
             idx = match.end()
@@ -350,12 +378,12 @@ class Parser:
 
     # Parse statement
     def parse_statemenet(self):
-        identifier = self.consume_token(TokenType.IDENTIFIER)
+        token_id = self.consume_token(TokenType.IDENTIFIER)
         self.consume_token(TokenType.ASSIGN)
         expression = self.parse_expression()
         self.consume_token(TokenType.DOT)
 
-        return StatementNode(identifier, expression)
+        return StatementNode(token_id.value, expression)
 
     # Parse block
     def parse_block(self):
@@ -363,7 +391,7 @@ class Parser:
         parameteres = []
         while not self.current_token.check_token(TokenType.PIPE):
             self.consume_token(TokenType.COLON)
-            parameteres.append(self.consume_token(TokenType.IDENTIFIER))
+            parameteres.append(self.consume_token(TokenType.IDENTIFIER).value)
         self.consume_token(TokenType.PIPE)
 
         statements = []
@@ -376,13 +404,13 @@ class Parser:
     # Parse method
     def parse_method(self):
         identifiers = []
-        identifiers.append(self.consume_token(TokenType.IDENTIFIER))
+        identifiers.append(self.consume_token(TokenType.IDENTIFIER).value)
 
         # Check if there are multiple identifiers
         if self.current_token.check_token(TokenType.COLON):
             self.advance_token()
             while not self.current_token.check_token(TokenType.L_BRACKET):
-                identifiers.append(self.consume_token(TokenType.IDENTIFIER))
+                identifiers.append(self.consume_token(TokenType.IDENTIFIER).value)
                 self.consume_token(TokenType.COLON)
 
         block = self.parse_block()
@@ -408,7 +436,7 @@ class Parser:
 
         self.consume_token(TokenType.R_BRACE)
 
-        return ClassNode(class_id, parent_class, methods)
+        return ClassNode(class_id.value, parent_class.value, methods)
 
     # Parse program and return root of AST (Program node)
     def parse_program(self):
@@ -439,6 +467,10 @@ def main():
 
     # Initialize semantic analyzer and perform semantic analysis
     # semantic_analyzer = SemanticAnalyzer(ast_root)
+
+    # Generare XML
+    xml_visitor = XMLVisitor()
+    print(ast_root.accept(xml_visitor))
 
 if __name__ == "__main__":
     main()
