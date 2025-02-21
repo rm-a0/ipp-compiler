@@ -306,7 +306,7 @@ class Parser:
 
     # Parse expression base
     def parse_expression_base(self):
-        if self.current_token.type in (TokenType.IDENTIFIER, TokenType.STRING, TokenType.INTEGER, TokenType.CLASS_IDENTIFIER) or self.current_token.type in self.builtin_classes or self.current_token.type in self.builtin_keywords:
+        if self.current_token.type in {TokenType.IDENTIFIER, TokenType.STRING, TokenType.INTEGER, TokenType.CLASS_IDENTIFIER} | self.builtin_classes | self.builtin_keywords:
             token = self.current_token
             self.advance_token()
             return LiteralNode(token.type, token.value)
