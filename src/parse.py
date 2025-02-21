@@ -122,6 +122,31 @@ class StatementNode(ASTNode):
     def accept(self, visitor):
         return visitor.visit_statement(self)
 
+class ExpressionNode(ASTNode):
+    def __init__(self, expression_base, selector):
+        self.expression_base = expression_base
+        self.selector = selector
+
+    def accept(self, visitor):
+        return visitor.visit_expression(self)
+
+class LiteralNode(ASTNode):
+    def __init__(self, literal_type, value):
+        self.type = literal_type
+        self.value = value
+    
+    def accept(self, visitor):
+        return visitor.visit_literal(self)
+
+class SelectorNode(ASTNode):
+    def __init__(self, identifier, expression_sel, args=None):
+        self.identifier = identifier
+        self.args = args
+        self.selector = expression_sel
+
+    def accept(self, visitor):
+        return visitor.visit_selector(self)
+
 # AST Visitor class
 class ASTVisitor:
     def visit_program(self, node):
@@ -138,6 +163,15 @@ class ASTVisitor:
         pass
     
     def visit_statement(self, node):
+        pass
+
+    def visit_expression(self, node):
+        pass
+
+    def visit_literal(self, node):
+        pass
+
+    def visit_selector(self, node):
         pass
 
 # Lexer class
@@ -264,11 +298,55 @@ class Parser:
         self.advance_token()
         return token
 
+    def peek_token(self, expected_type: TokenType):
+        if self.token_idx < self.token_len - 1:
+            if self.tokens[self.token_idx + 1].check_token(expected_type):
+                return True
+        return False
+
+    # Parse expression base
+    def parse_expression_base(self):
+        if self.current_token.type in (TokenType.IDENTIFIER, TokenType.STRING, TokenType.INTEGER, TokenType.CLASS_IDENTIFIER) or self.current_token.type in self.builtin_classes or self.current_token.type in self.builtin_keywords:
+            token = self.current_token
+            self.advance_token()
+            return LiteralNode(token.type, token.value)
+        elif self.current_token.check_token(TokenType.L_PARENT):
+            self.advance_token()
+            expression = self.parse_expression()
+            self.consume_token(TokenType.R_PARENT)
+            return expression
+        elif self.current_token.check_token(TokenType.L_BRACKET):
+            block = self.parse_block()
+            return block
+        else:
+            sys.exit(ErrorType.SYNTAX_ERROR.value)
+
+    def parse_expression_selector(self):
+        if self.current_token.check_token(TokenType.IDENTIFIER):
+            token = self.consume_token(TokenType.IDENTIFIER)
+            self.consume_token(TokenType.COLON)
+            expression_base = self.parse_expression_base()
+            expression_sel = self.parse_expression_selector()
+            return SelectorNode(token.value, expression_sel, expression_base)
+        else:
+            return None
+
+    # Parse expression tail
+    def parse_expression_tail(self):
+        if self.peek_token(TokenType.COLON):
+            expression_selector = self.parse_expression_selector()
+            return expression_selector
+        else:
+            token = self.consume_token(TokenType.IDENTIFIER)
+            return LiteralNode(token.type, token.value)
+        return None
+
     # Parse expression
     def parse_expression(self):
-        while not self.current_token.check_token(TokenType.DOT):
-            self.advance_token()
-        return 1
+        expression_base = self.parse_expression_base()
+        expression_tail = self.parse_expression_tail()
+
+        return ExpressionNode(expression_base, expression_tail)
 
     # Parse statement
     def parse_statemenet(self):
