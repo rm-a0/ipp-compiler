@@ -84,7 +84,8 @@ class ASTNode:
         raise NotImplementedError
 
 class ProgramNode(ASTNode):
-    def __init__(self, class_nodes):
+    def __init__(self, class_nodes, first_comment):
+        self.first_comment = first_comment
         self.class_nodes = class_nodes
 
     def accept(self, visitor):
@@ -178,8 +179,8 @@ class ASTVisitor(ABC):
 # XMLVisitor class
 class XMLVisitor(ASTVisitor):
     def visit_program(self, node):
-        description = ""
-        description_attr = f' description="{description}"' if description else ""
+        description = node.first_comment
+        description_attr = f' description={description}' if description else ""
         xml = f'<program language="SOL25"{description_attr}>\n'
         for class_node in node.class_nodes:
             xml += class_node.accept(self)
@@ -187,11 +188,10 @@ class XMLVisitor(ASTVisitor):
         return xml
 
     def visit_class(self, node):
-        xml = f'<class name="{node.identifier}" parent="{node.parent_class}">\n'
+        xml = f'  <class name="{node.identifier}" parent="{node.parent_class}">\n'
         for method_node in node.methods:
-            print(1)
-            # xml += method_node.accept(self)
-        xml += "</class>\n"
+            xml += "todo\n" #method_node.accept(self)
+        xml += "  </class>\n"
         return xml
 
     def visit_method(self, node):
@@ -262,6 +262,8 @@ class Lexer:
     # Populate token array
     def tokenize(self):
         idx = 0
+        comment_flag = False
+        first_comment = None
         tokens = []
         while idx < len(self.src_code):
             match = self.get_token(self.src_code, idx)
@@ -272,7 +274,10 @@ class Lexer:
             token_value = match.group(token_type)
 
             # Skip whitespace and comments
-            if token_type in {TokenType.WHITESPACE.value, TokenType.NEWLINE.value, TokenType.COMMENT.value}:
+            if token_type == TokenType.COMMENT.value and comment_flag == False:
+                first_comment = token_value
+                comment_flag = True
+            elif token_type in {TokenType.WHITESPACE.value, TokenType.NEWLINE.value, TokenType.COMMENT.value}:
                 pass
             # Create token
             else:
@@ -283,7 +288,7 @@ class Lexer:
 
             idx = match.end()
 
-        return tokens
+        return tokens, first_comment
 
 # Parser class
 class Parser:
@@ -439,13 +444,15 @@ class Parser:
         return ClassNode(class_id.value, parent_class.value, methods)
 
     # Parse program and return root of AST (Program node)
-    def parse_program(self):
+    def parse_program(self, first_comment):
+        if first_comment == None:
+            first_comment = ""
         class_nodes = []
         while not self.current_token.check_token(TokenType.EOF):
             self.consume_token(TokenType.CLASS_KW)
             class_nodes.append(self.parse_class())
 
-        return ProgramNode(class_nodes)
+        return ProgramNode(class_nodes, first_comment)
 
 # Main function
 def main():
@@ -459,11 +466,11 @@ def main():
 
     # Initialize lexer and tokenize input
     lexer = Lexer(sys.stdin.read())
-    tokens = lexer.tokenize()
+    tokens, first_comment = lexer.tokenize()
 
     # Initialize parser, check grammar, and construct AST
     parser = Parser(tokens)
-    ast_root = parser.parse_program()
+    ast_root = parser.parse_program(first_comment)
 
     # Initialize semantic analyzer and perform semantic analysis
     # semantic_analyzer = SemanticAnalyzer(ast_root)
