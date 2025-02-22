@@ -71,7 +71,6 @@ class Token:
 
     # Check if token attributes are the same as expected attributes
     def check_token(self, expected_type, expected_value=None):
-        print(self)
         if self.type != expected_type:
             return False
         if expected_value is not None and self.value != expected_value:
@@ -101,8 +100,9 @@ class ClassNode(ASTNode):
         return visitor.visit_class(self)
 
 class MethodNode(ASTNode):
-    def __init__(self, identifiers, block):
-        self.identifiers = identifiers
+    def __init__(self, selector, param_count, block):
+        self.selector = selector
+        self.param_count = param_count
         self.block = block
 
     def accept(self, visitor):
@@ -190,18 +190,40 @@ class XMLVisitor(ASTVisitor):
     def visit_class(self, node):
         xml = f'  <class name="{node.identifier}" parent="{node.parent_class}">\n'
         for method_node in node.methods:
-            xml += "todo\n" #method_node.accept(self)
+            xml += method_node.accept(self)
         xml += "  </class>\n"
         return xml
 
     def visit_method(self, node):
-        pass
+        xml = f'    <method selector="{node.selector}">\n'
+        xml += node.block.accept(self)
+        xml += "    </method>\n"
+        return xml
+
+    # Possibly the ugliest function i have ever written
     def visit_block(self, node):
-        pass
+        xml = f'      <block arity="{len(node.parameters)}">\n'
+        for index, parameter in enumerate(node.parameters):
+            if index + 1 == len(node.parameters):
+                xml += f'        <parameter name="{parameter}" order="{index + 1}"></parameter>\n'
+            else:
+                xml += f'        <parameter name="{parameter}" order="{index + 1}" />\n'
+        for index, statement in enumerate(node.statements):
+            xml += f'        <assign order="{index + 1}">\n'
+            xml += statement.accept(self)
+            xml += "        </assign>\n"
+        xml += "      </block\n"
+        return xml
+
     def visit_statement(self, node):
-        pass
+        xml = f'          <var name="{node.identifier}"/>\n'
+        xml += node.expression.accept(self)
+        return xml
+
     def visit_expression(self, node):
-        pass
+        xml = "          what the fuck am i supposed to do\n"
+        return xml
+
     def visit_literal(self, node):
         pass
     def visit_selector(self, node):
@@ -393,10 +415,10 @@ class Parser:
     # Parse block
     def parse_block(self):
         self.consume_token(TokenType.L_BRACKET)
-        parameteres = []
+        parameters = []
         while not self.current_token.check_token(TokenType.PIPE):
             self.consume_token(TokenType.COLON)
-            parameteres.append(self.consume_token(TokenType.IDENTIFIER).value)
+            parameters.append(self.consume_token(TokenType.IDENTIFIER).value)
         self.consume_token(TokenType.PIPE)
 
         statements = []
@@ -404,23 +426,26 @@ class Parser:
             statements.append(self.parse_statemenet())
         self.consume_token(TokenType.R_BRACKET)
 
-        return BlockNode(parameteres, statements)
+        return BlockNode(parameters, statements)
 
     # Parse method
     def parse_method(self):
-        identifiers = []
-        identifiers.append(self.consume_token(TokenType.IDENTIFIER).value)
+        selector = self.consume_token(TokenType.IDENTIFIER).value
+        param_count = 0
 
         # Check if there are multiple identifiers
         if self.current_token.check_token(TokenType.COLON):
+            selector += ":"
+            param_count += 1
             self.advance_token()
             while not self.current_token.check_token(TokenType.L_BRACKET):
-                identifiers.append(self.consume_token(TokenType.IDENTIFIER).value)
-                self.consume_token(TokenType.COLON)
+                selector += self.consume_token(TokenType.IDENTIFIER).value
+                selector += self.consume_token(TokenType.COLON).value
+                param_count += 1
 
         block = self.parse_block()
 
-        return MethodNode(identifiers, block)
+        return MethodNode(selector, param_count, block)
 
     # Parse class
     def parse_class(self):
