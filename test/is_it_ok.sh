@@ -9,7 +9,7 @@
 #   - detaily prubehu jsou logovany do souboru is_it_ok.log v adresari testdir
 
 # Autor: Zbynek Krivka
-# Verze: 1.5.8 (2025-02-13)
+# Verze: 1.5.9 (2025-02-18)
 #  2012-04-03  Zverejnena prvni verze
 #  2012-04-09  Pridana kontrola tretiho radku (prispel Vilem Jenis) a maximalni velikosti archivu
 #  2012-04-26  Oprava povolenych pripon archivu, aby to odpovidalo pozadavkum v terminu ve WIS
@@ -30,7 +30,8 @@
 #              Zruseno rozsireni NVI a FILES.
 #  2023-04-08  Aktualizace prikazu pro Python 3.10
 #  2024-02-03  Upravy dle zadani pro 2024 a podpora tbz, podpora php8.3, podpora ipp-core (adresar student)
-#  2025-02-13  Podpora prikazu php8.4 i php
+#  2025-02-13  Podpora prikazu php8.4 i php a python3.11
+#  2025-02-18  Oprava regularniho vyrazu pro kontrolu jmena archivu
 
 LOG="is_it_ok.log"
 MAX_ARCHIVE_SIZE=1100000
@@ -139,9 +140,11 @@ function unpack_archive () {
     echo_color green OK
   elif [[ $RETCODE -eq 100 ]]; then
     echo_color red "ERROR (unsupported extension)"
+    let ERROR=ERROR+1
     exit 1
   else
     echo_color red "ERROR (code $RETCODE)"
+    let ERROR=ERROR+1
     exit 1
   fi
 } 
@@ -191,7 +194,7 @@ if [[ $TASK -eq 2 ]]; then
 fi
 touch $LOG
 ARCHIVE=`basename $1`
-NAME=`echo $ARCHIVE | cut -d . -f 1 | egrep "(^x[a-z]{5}[0-9][0-9a-z]$)"`
+NAME=`echo $ARCHIVE | cut -d . -f 1 | egrep "^x([a-z]{5,6}[a-z0-9][a-z0-9]|[0-9]{5,7})$"`
 echo -n "Archive name ($ARCHIVE): "
 if [[ -n $NAME ]]; then
   echo_color green "OK"
@@ -237,6 +240,7 @@ elif [ $TASK -eq 1 -o  $TASK -eq 2 ]; then
   fi
 else
   echo_color red "ERROR (not found!)"  
+  let ERROR=ERROR+1
 fi
 #fi
 if [[ $TASK -eq 2 ]]; then
@@ -309,7 +313,7 @@ if [[ -f $EXTENSIONS ]]; then
   diff $EXTENSIONS $EXTENSIONS.lf >> $LOG 2>&1
   RETCODE=$?
   if [[ $RETCODE = "0" ]]; then
-    UNKNOWN=`cat $EXTENSIONS | grep -v -E -e "^(STATP|NVP|FLOAT|STACK|STATI)$" | wc -l`
+    UNKNOWN=`cat $EXTENSIONS | grep -v -E -e "^(NVP|CLASS)$" | wc -l`
     if [[ $UNKNOWN = "0" ]]; then
       echo_color green "OK" 
     else
