@@ -1,7 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 import sys
 import re
 import argparse
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 from enum import Enum
 from abc import ABC, abstractmethod
 
@@ -125,12 +127,20 @@ class StatementNode(ASTNode):
         return visitor.visit_statement(self)
 
 class ExpressionNode(ASTNode):
-    def __init__(self, expression_base, selector):
-        self.expression_base = expression_base
-        self.selector = selector
+    def __init__(self, base, tail, node=None):
+        self.base = base
+        self.tail = tail
+        self.node = node
 
     def accept(self, visitor):
         return visitor.visit_expression(self)
+
+class VariableNode(ASTNode):
+    def __init__(sefl, name):
+        self.name = name
+
+    def accept(self, visitor):
+        return visitor.visit_variable(self)
 
 class LiteralNode(ASTNode):
     def __init__(self, literal_type, value):
@@ -179,55 +189,70 @@ class ASTVisitor(ABC):
 # XMLVisitor class
 class XMLVisitor(ASTVisitor):
     def visit_program(self, node):
-        description = node.first_comment
-        description_attr = f' description={description}' if description else ""
-        xml = f'<program language="SOL25"{description_attr}>\n'
+        program = ET.Element('program', language="SOL25")
+        if node.first_comment:
+            program.set('description', node.first_comment)
+
         for class_node in node.class_nodes:
-            xml += class_node.accept(self)
-        xml += "</program>"
-        return xml
+            program.append(class_node.accept(self))
+
+        return self.prettify(program)
 
     def visit_class(self, node):
-        xml = f'  <class name="{node.identifier}" parent="{node.parent_class}">\n'
+        class_elem = ET.Element('class', name=node.identifier, parent=node.parent_class)
+
         for method_node in node.methods:
-            xml += method_node.accept(self)
-        xml += "  </class>\n"
-        return xml
+            class_elem.append(method_node.accept(self))
+
+        return class_elem
 
     def visit_method(self, node):
-        xml = f'    <method selector="{node.selector}">\n'
-        xml += node.block.accept(self)
-        xml += "    </method>\n"
-        return xml
+        method_elem = ET.Element('method', selector=node.selector)
+        method_elem.append(node.block.accept(self))
 
-    # Possibly the ugliest function i have ever written
+        return method_elem
+
     def visit_block(self, node):
-        xml = f'      <block arity="{len(node.parameters)}">\n'
+        block_elem = ET.Element('block', arity=str(len(node.parameters)))
+
         for index, parameter in enumerate(node.parameters):
-            if index + 1 == len(node.parameters):
-                xml += f'        <parameter name="{parameter}" order="{index + 1}"></parameter>\n'
-            else:
-                xml += f'        <parameter name="{parameter}" order="{index + 1}" />\n'
+            param_elem = ET.SubElement(block_elem, 'parameter', name=parameter, order=str(index + 1))
+
         for index, statement in enumerate(node.statements):
-            xml += f'        <assign order="{index + 1}">\n'
-            xml += statement.accept(self)
-            xml += "        </assign>\n"
-        xml += "      </block\n"
-        return xml
+            assign_elem = ET.Element('assign', order=str(index + 1))
+            var_elem = ET.SubElement(assign_elem, 'var', name=statement.identifier)
+            assign_elem.append(statement.accept(self))
+            block_elem.append(assign_elem)
+
+        return block_elem
 
     def visit_statement(self, node):
-        xml = f'          <var name="{node.identifier}"/>\n'
-        xml += node.expression.accept(self)
-        return xml
+        return node.expression.accept(self)
 
     def visit_expression(self, node):
-        xml = "          what the fuck am i supposed to do\n"
-        return xml
+        return ET.Element('expr')
 
+    def visit_variable(self, node):
+        pass
     def visit_literal(self, node):
         pass
     def visit_selector(self, node):
-        pass
+        pass 
+
+    def prettify(self, element):
+        rough_string = ET.tostring(element, encoding="UTF-8", xml_declaration=True)
+        rough_string = rough_string.decode("UTF-8")
+        parsed = minidom.parseString(rough_string)
+        pretty_string = parsed.toprettyxml(indent="  ")
+
+        # Hardcoed encoding because it didnt work
+        if not pretty_string.startswith('<?xml version="1.0" encoding="UTF-8"?>'):
+            if pretty_string.startswith('<?xml'):
+                end_of_first_line = pretty_string.find('?>') + 2
+                pretty_string = pretty_string[end_of_first_line:].lstrip()
+            pretty_string = '<?xml version="1.0" encoding="UTF-8"?>\n' + pretty_string
+
+        return pretty_string 
 
 # Lexer class
 class Lexer:
@@ -297,7 +322,7 @@ class Lexer:
 
             # Skip whitespace and comments
             if token_type == TokenType.COMMENT.value and comment_flag == False:
-                first_comment = token_value
+                first_comment = token_value.strip('"')
                 comment_flag = True
             elif token_type in {TokenType.WHITESPACE.value, TokenType.NEWLINE.value, TokenType.COMMENT.value}:
                 pass
