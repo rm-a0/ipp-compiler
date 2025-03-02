@@ -23,20 +23,20 @@ class ErrorType(Enum):
 # Enum for token types
 class TokenType(Enum):
     # Reserved keywords
-    CLASS_KW = "CLASS_KW"
-    SELF_KW = "SELF_KW"
-    SUPER_KW = "SUPER_KW"
-    NIL_KW = "NIL_KW"
-    TRUE_KW = "TRUE_KW"
-    FALSE_KW = "FALSE_KW"
+    CLASS_KW = "class"
+    SELF_KW = "self"
+    SUPER_KW = "super"
+    NIL_KW = "nil"
+    TRUE_KW = "true"
+    FALSE_KW = "false"
     # Built-in classes
-    OBJECT_BC = "OBJECT_BC"
-    NIL_BC = "NIL_BC"
-    TRUE_BC = "TRUE_BC"
-    FALSE_BC = "FALSE_BC"
-    INT_BC = "INT_BC"
-    STRING_BC = "STRING_BC"
-    BLOCK_BC = "BLOCK_BC"
+    OBJECT_BC = "Object"
+    NIL_BC = "Nil"
+    TRUE_BC = "True"
+    FALSE_BC = "False"
+    INT_BC = "Integer_"
+    STRING_BC = "String_"
+    BLOCK_BC = "Block"
     # Identifiers
     IDENTIFIER = "IDENTIFIER"
     CLASS_IDENTIFIER = "CLASS_IDENTIFIER"
@@ -51,9 +51,8 @@ class TokenType(Enum):
     L_PARENT = "L_PARENT"
     R_PARENT = "R_PARENT"
     PIPE = "PIPE"
-    OPERATOR = "OPERATOR"
-    STRING = "STRING"
-    INTEGER = "INTEGER"
+    STRING = "String"
+    INTEGER = "Integer"
     # Whitespace and comments
     WHITESPACE = "WHITESPACE"
     NEWLINE = "NEWLINE"
@@ -136,7 +135,7 @@ class SendNode(ASTNode):
         return visitor.visit_send(self)
 
 class VariableNode(ASTNode):
-    def __init__(sefl, name):
+    def __init__(self, name):
         self.name = name
 
     def accept(self, visitor):
@@ -244,9 +243,11 @@ class XMLVisitor(ASTVisitor):
         return send_elem 
 
     def visit_variable(self, node):
-        pass
+        return ET.Element('var', name=node.name)
+
     def visit_literal(self, node):
-        return ET.Element('literal', _class=node.type.value, value=node.value)
+        # Dictionary because class is builtin keyword
+        return ET.Element('literal', **{'class': node.type.value, 'value': str(node.value)})
 
     def prettify(self, element):
         rough_string = ET.tostring(element, encoding="UTF-8", xml_declaration=True)
@@ -297,7 +298,6 @@ class Lexer:
             (TokenType.L_PARENT, r'\('),
             (TokenType.R_PARENT, r'\)'),
             (TokenType.PIPE, r'\|'),
-            (TokenType.OPERATOR, r'[+\-*/]'),
             (TokenType.STRING, r"'([^'\\]*(\\['n\\][^'\\]*)*)'"),
             (TokenType.INTEGER, r'[+-]?\d+'),
             # Whitespace and comments
@@ -395,10 +395,14 @@ class Parser:
 
     # Parse expression base
     def parse_expression_base(self):
-        if self.current_token.type in {TokenType.IDENTIFIER, TokenType.STRING, TokenType.INTEGER, TokenType.CLASS_IDENTIFIER} | self.builtin_classes | self.builtin_keywords:
+        if self.current_token.type in {TokenType.STRING, TokenType.INTEGER, TokenType.CLASS_IDENTIFIER} | self.builtin_classes:
             token = self.current_token
             self.advance_token()
             return LiteralNode(token.type, token.value)
+        elif self.current_token.type in {TokenType.IDENTIFIER} | self.builtin_keywords:
+            token = self.current_token
+            self.advance_token()
+            return VariableNode(token.value)
         elif self.current_token.check_token(TokenType.L_PARENT):
             self.advance_token()
             expression = self.parse_expression(TokenType.R_PARENT)
