@@ -17,10 +17,14 @@ The `Lexer` class is responsible for tokenizing the source code. It uses a set o
 The `Parser` class is responsible for processing an array of tokens obtained from the lexer, constructing the AST, and checking for syntax errors. This class uses multiple methods for recursive descent parsing, with the help of the `consume_token`, `advance_token` and `peek_token` methods, which are responsible for validating `token_type` and traversing the token array. After successfull parsing the method 'parse_program' outputs the root of constructed AST.
 
 ### Abstract Syntax Tree
-The `ASTNode` class represents the hierarchical of the parsed source code. Each node in the tree corresponds to a syntactic construct in the SOL25 language, such as expressions, statements, or declarations. The AST is constructed during parsing and serves as the foundation for semantic analysis and further processing.
+The `ASTNode` class represents the hierarchical structure of the parsed source code. Each node in the tree corresponds to a syntactic construct in the SOL25 language, such as expressions, statements, literals or variables. The AST is constructed during parsing and serves as the foundation for semantic analysis and XML generation.
 
-### **ASTVisitor**
+### **AST Visitor**
 This `ASTVisitor`class servers as an interface for implementing `XMLVisitor` and `SemanticAnalyzer`.
-### XMLVisitor
+
+### XML Visitor
 The 'XMLVisitor' class is used for generating XML representation of AST. It utilizes multiple methods for traversing
-the AST and converts its structure into formated XML.
+the AST and converts its structure into formated XML using `ElementTree` from `xml.etree.ElementTree` module and `minidom` from `xml.dom` module.
+
+### Semantic Analyzer
+
