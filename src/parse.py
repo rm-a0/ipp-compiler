@@ -126,14 +126,14 @@ class StatementNode(ASTNode):
     def accept(self, visitor):
         return visitor.visit_statement(self)
 
-class ExpressionNode(ASTNode):
-    def __init__(self, base, tail, node=None):
-        self.base = base
-        self.tail = tail
-        self.node = node
+class SendNode(ASTNode):
+    def __init__(self, receiver, selector, args=None):
+        self.receiver = receiver
+        self.selector = selector
+        self.args = args
 
     def accept(self, visitor):
-        return visitor.visit_expression(self)
+        return visitor.visit_send(self)
 
 class VariableNode(ASTNode):
     def __init__(sefl, name):
@@ -177,13 +177,13 @@ class ASTVisitor(ABC):
     def visit_statement(self, node):
         pass
     @abstractmethod
-    def visit_expression(self, node):
+    def visit_send(self, node):
+        pass
+    @abstractmethod
+    def visit_variable(self, node):
         pass
     @abstractmethod
     def visit_literal(self, node):
-        pass
-    @abstractmethod
-    def visit_selector(self, node):
         pass
 
 # XMLVisitor class
@@ -227,17 +227,26 @@ class XMLVisitor(ASTVisitor):
         return block_elem
 
     def visit_statement(self, node):
-        return node.expression.accept(self)
+        expr_elem = ET.Element('expr')
+        expr_elem.append(node.expression.accept(self))
+        return expr_elem
 
-    def visit_expression(self, node):
-        return ET.Element('expr')
+    def visit_send(self, node):
+        send_elem =  ET.Element('send', selector=node.selector)
+        receiver_elem = ET.SubElement(send_elem, 'expr')
+        receiver_elem.append(node.receiver.accept(self))
+
+        for index, argument in enumerate(node.args):
+            arg_elem = ET.SubElement(send_elem, 'arg', order=str(index + 1))
+            expr_elem = ET.SubElement(arg_elem, 'expr')
+            expr_elem.append(argument.accept(self))
+
+        return send_elem 
 
     def visit_variable(self, node):
         pass
     def visit_literal(self, node):
-        pass
-    def visit_selector(self, node):
-        pass 
+        return ET.Element('literal', _class=node.type.value, value=node.value)
 
     def prettify(self, element):
         rough_string = ET.tostring(element, encoding="UTF-8", xml_declaration=True)
@@ -392,7 +401,7 @@ class Parser:
             return LiteralNode(token.type, token.value)
         elif self.current_token.check_token(TokenType.L_PARENT):
             self.advance_token()
-            expression = self.parse_expression()
+            expression = self.parse_expression(TokenType.R_PARENT)
             self.consume_token(TokenType.R_PARENT)
             return expression
         elif self.current_token.check_token(TokenType.L_BRACKET):
@@ -401,38 +410,32 @@ class Parser:
         else:
             sys.exit(ErrorType.SYNTAX_ERROR.value)
 
-    def parse_expression_selector(self):
-        if self.current_token.check_token(TokenType.IDENTIFIER):
-            token = self.consume_token(TokenType.IDENTIFIER)
-            self.consume_token(TokenType.COLON)
-            expression_base = self.parse_expression_base()
-            expression_sel = self.parse_expression_selector()
-            return SelectorNode(token.value, expression_sel, expression_base)
-        else:
-            return None
-
-    # Parse expression tail
-    def parse_expression_tail(self):
-        if self.peek_token(TokenType.COLON):
-            expression_selector = self.parse_expression_selector()
-            return expression_selector
-        else:
-            token = self.consume_token(TokenType.IDENTIFIER)
-            return LiteralNode(token.type, token.value)
-        return None
-
     # Parse expression
-    def parse_expression(self):
-        expression_base = self.parse_expression_base()
-        expression_tail = self.parse_expression_tail()
+    def parse_expression(self, end_token):
+        base = self.parse_expression_base()
+        selector_parts = []
+        args = []
 
-        return ExpressionNode(expression_base, expression_tail)
+        while True:
+            selector_parts.append(self.consume_token(TokenType.IDENTIFIER).value)
+            if self.current_token.check_token(TokenType.COLON):
+                selector_parts.append(":")
+                self.advance_token()
+                arg = self.parse_expression_base()
+                args.append(arg)
+
+                if self.current_token.check_token(end_token):
+                    return SendNode(base, "".join(selector_parts), args)
+            elif self.current_token.check_token(end_token):
+                return SendNode(base, "".join(selector_parts), args)
+            else:
+                sys.exit(ErrorType.SYNTAX_ERROR.value)
 
     # Parse statement
     def parse_statemenet(self):
         token_id = self.consume_token(TokenType.IDENTIFIER)
         self.consume_token(TokenType.ASSIGN)
-        expression = self.parse_expression()
+        expression = self.parse_expression(TokenType.DOT)
         self.consume_token(TokenType.DOT)
 
         return StatementNode(token_id.value, expression)

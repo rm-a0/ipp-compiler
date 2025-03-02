@@ -37,3 +37,4 @@ testdir/
 *.bak
 *.swp
 *.swo
+out.xml
