@@ -23,7 +23,7 @@ class ErrorType(Enum):
 # Enum for token types
 class TokenType(Enum):
     # Reserved keywords
-    CLASS_KW = "class"
+    CLASS_KW = "class_"
     SELF_KW = "self"
     SUPER_KW = "super"
     NIL_KW = "nil"
@@ -38,19 +38,19 @@ class TokenType(Enum):
     STRING_BC = "String_"
     BLOCK_BC = "Block"
     # Identifiers
-    IDENTIFIER = "IDENTIFIER"
-    CLASS_IDENTIFIER = "CLASS_IDENTIFIER"
+    IDENTIFIER = "Identifier"
+    CLASS_IDENTIFIER = "class"
     # Other tokens
-    ASSIGN = "ASSIGN"
-    DOT = "DOT"
-    COLON = "COLON"
-    L_BRACE = "L_BRACE"
-    R_BRACE = "R_BRACE"
-    L_BRACKET = "L_BRACKET"
-    R_BRACKET = "R_BRACKET"
-    L_PARENT = "L_PARENT"
-    R_PARENT = "R_PARENT"
-    PIPE = "PIPE"
+    ASSIGN = "assign"
+    DOT = "dot"
+    COLON = "colon"
+    L_BRACE = "l_brace"
+    R_BRACE = "r_brace"
+    L_BRACKET = "l_bracket"
+    R_BRACKET = "r_bracket"
+    L_PARENT = "l_parent"
+    R_PARENT = "r_parent"
+    PIPE = "pipe"
     STRING = "String"
     INTEGER = "Integer"
     # Whitespace and comments
@@ -101,9 +101,9 @@ class ClassNode(ASTNode):
         return visitor.visit_class(self)
 
 class MethodNode(ASTNode):
-    def __init__(self, selector, param_count, block):
+    def __init__(self, selector, arity, block):
         self.selector = selector
-        self.param_count = param_count
+        self.arity = arity
         self.block = block
 
     def accept(self, visitor):
@@ -112,6 +112,7 @@ class MethodNode(ASTNode):
 class BlockNode(ASTNode):
     def __init__(self, parameters, statements):
         self.parameters = parameters
+        self.param_count = len(parameters)
         self.statements = statements
 
     def accept(self, visitor):
@@ -212,7 +213,7 @@ class XMLVisitor(ASTVisitor):
         return method_elem
 
     def visit_block(self, node):
-        block_elem = ET.Element('block', arity=str(len(node.parameters)))
+        block_elem = ET.Element('block', arity=str(node.param_count))
 
         for index, parameter in enumerate(node.parameters):
             param_elem = ET.SubElement(block_elem, 'parameter', name=parameter, order=str(index + 1))
@@ -328,7 +329,6 @@ class Lexer:
 
             token_type = match.lastgroup
             token_value = match.group(token_type)
-
             # Skip whitespace and comments
             if token_type == TokenType.COMMENT.value and comment_flag == False:
                 first_comment = token_value.strip('"')
@@ -370,6 +370,19 @@ class Parser:
             TokenType.FALSE_KW,
             TokenType.SUPER_KW,
         }
+        self.literal_tokens = {
+            TokenType.INTEGER,
+            TokenType.STRING,
+            TokenType.TRUE_KW,
+            TokenType.FALSE_KW,
+            TokenType.NIL_KW,
+            TokenType.CLASS_IDENTIFIER
+        }
+        self.variable_tokens = {
+            TokenType.SELF_KW,
+            TokenType.SUPER_KW,
+            TokenType.IDENTIFIER
+        }
 
     # Advance current token and increment token_idx if possible
     def advance_token(self):
@@ -395,11 +408,15 @@ class Parser:
 
     # Parse expression base
     def parse_expression_base(self):
-        if self.current_token.type in {TokenType.STRING, TokenType.INTEGER, TokenType.CLASS_IDENTIFIER} | self.builtin_classes:
+        if self.current_token.type in self.literal_tokens:
             token = self.current_token
             self.advance_token()
             return LiteralNode(token.type, token.value)
-        elif self.current_token.type in {TokenType.IDENTIFIER} | self.builtin_keywords:
+        elif self.current_token.type in self.builtin_classes:
+            token = self.current_token
+            self.advance_token()
+            return LiteralNode('class', token.value)
+        elif self.current_token.type in self.variable_tokens:
             token = self.current_token
             self.advance_token()
             return VariableNode(token.value)
@@ -484,8 +501,8 @@ class Parser:
         class_id = self.consume_token(TokenType.CLASS_IDENTIFIER)
         self.consume_token(TokenType.COLON)
 
-        # Check if current token type is in builtin classes
-        if self.current_token.type not in self.builtin_classes:
+        # Check if current token type is class identifier or builtin class
+        if self.current_token.type not in self.builtin_classes | {TokenType.CLASS_IDENTIFIER}:
             sys.exit(ErrorType.SYNTAX_ERROR.value)
         parent_class = self.current_token
         self.advance_token()
@@ -510,6 +527,109 @@ class Parser:
             class_nodes.append(self.parse_class())
 
         return ProgramNode(class_nodes, first_comment)
+
+class SemanticAnalyzer(ASTVisitor):
+    def __init__(self):
+        self.class_symtable = {
+            "Object": {
+                "parent": None,
+                "methods": {
+                    "identicalTo:": {"arity": 1},
+                    "equalTo:": {"arity": 1},
+                    "asString": {"arity": 0},
+                    "isNumber": {"arity": 0},
+                    "isString": {"arity": 0},
+                    "isBlock": {"arity": 0},
+                    "isNil": {"arity": 0},
+                }
+            },
+            "Nil": {
+                "parent": "Object",
+                "methods": {
+                    "asString": {"arity": 0},
+                }
+            },
+            "Integer": {
+                "parent": "Object",
+                "methods": {
+                    "equalTo:": {"arity": 1},
+                    "plus:": {"arity": 1},
+                    "minus:": {"arity": 1},
+                    "multiplyBy:": {"arity": 1},
+                    "divBy:": {"arity": 1},
+                    "asString": {"arity": 0},
+                    "asInteger": {"arity": 0},
+                    "timesRepeat:": {"arity": 1},
+                }
+            },
+            "String": {
+                "parent": "Object",
+                "methods": {
+                    "equalTo:": {"arity": 1},
+                    "concatenateWith:": {"arity": 1},
+                    "startsWith:endsBefore:": {"arity": 2},
+                    "asString": {"arity": 0},
+                    "asInteger": {"arity": 0},
+                    "print": {"arity": 0},
+                }
+            },
+            "Block": {
+                "parent": "Object",
+                "methods": {
+                    "value": {"arity": 0},
+                    "value:": {"arity": 1},
+                    "value:value:": {"arity": 2},
+                    "whileTrue:": {"arity": 1},
+                }
+            },
+            "True": {
+                "parent": "Object",
+                "methods": {
+                    "not": {"arity": 0},
+                    "and:": {"arity": 1},
+                    "or:": {"arity": 1},
+                    "ifTrue:ifFalse:": {"arity": 2},
+                }
+            },
+            "False": {
+                "parent": "Object",
+                "methods": {
+                    "not": {"arity": 0},
+                    "and:": {"arity": 1},
+                    "or:": {"arity": 1},
+                    "ifTrue:ifFalse:": {"arity": 2},
+                }
+            },
+        } 
+
+### TODO
+### add arity counter for : and parameters in method declaration
+### check param_count and arity from block and method check_arity(node, expected_arg_count)
+
+    def analze(self, ast):
+        self.visit(ast)
+        self.check_main_class()
+
+    def check_main_class(self):
+        if "Main" not in self.class_symtable:
+            sys.exit(ErrorType.SEMANTIC_ERROR_MISSING_MAIN.value)
+
+    def visit_program(self, node):
+        pass
+    def visit_class(self, node):
+        pass
+    def visit_method(self, node):
+        pass
+    def visit_block(self, node):
+        pass
+    def visit_statement(self, node):
+        pass
+    def visit_send(self, node):
+        pass
+    def visit_variable(self, node):
+        pass
+    def visit_literal(self, node):
+        pass
 
 # Main function
 def main():
