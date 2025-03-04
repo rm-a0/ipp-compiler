@@ -18,6 +18,7 @@ class ErrorType(Enum):
     SEMANTIC_ERROR_UNDEFINED_USE = 32
     SEMANTIC_ERROR_MISSMATCH = 33
     SEMANTIC_ERROR_VAR_COLLISION = 34
+    SEMANTIC_ERROR_OTHER = 35
     INTERNAL_ERROR = 99
 
 # Enum for token types
@@ -601,27 +602,64 @@ class SemanticAnalyzer(ASTVisitor):
                 }
             },
         } 
+        self.scopes = {
+            "global": {
+                "variables": {},
+                "parent": {},
+                "children" : []
+            }
+        }
+        self.current_scope = [self.scopes["global"]]
+        self.current_class = None
 
-### TODO
-### add arity counter for : and parameters in method declaration
-### check param_count and arity from block and method check_arity(node, expected_arg_count)
-
-    def analze(self, ast):
-        self.visit(ast)
+    def analyze(self, ast):
+        self.visit_program(ast)
         self.check_main_class()
 
+    # Check if class identifier 'Main' is in class symbtable
     def check_main_class(self):
         if "Main" not in self.class_symtable:
             sys.exit(ErrorType.SEMANTIC_ERROR_MISSING_MAIN.value)
 
+    # Check if number of colons corresponds to number of arguments in method
+    def check_arity(self, method_arity, param_count):
+        if method_arity != param_count:
+            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+
     def visit_program(self, node):
-        pass
+        for class_node in node.class_nodes:
+            class_node.accept(self)
+
     def visit_class(self, node):
-        pass
+        class_name = node.identifier
+        self.current_class = class_name
+        if class_name in self.class_symtable:
+            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+
+        self.class_symtable[class_name] = {
+            "parent": node.parent_class,
+            "methods": {}
+        }
+
+        for method in node.methods:
+            method.accept(self)
+
     def visit_method(self, node):
-        pass
+        class_name = self.current_class
+        method_id = node.selector
+        arity = node.arity
+
+        if method_id in self.class_symtable[class_name]["methods"]:
+            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+
+        self.check_arity(arity, node.block.param_count)
+        self.class_symtable[class_name]["methods"][method_id] = {"arity": arity}
+        
+        node.block.accept(self)
+
     def visit_block(self, node):
-        pass
+        print('TODO')
+
     def visit_statement(self, node):
         pass
     def visit_send(self, node):
@@ -650,11 +688,12 @@ def main():
     ast_root = parser.parse_program(first_comment)
 
     # Initialize semantic analyzer and perform semantic analysis
-    # semantic_analyzer = SemanticAnalyzer(ast_root)
+    semantic_analyzer = SemanticAnalyzer()
+    semantic_analyzer.analyze(ast_root)
 
     # Generare XML
     xml_visitor = XMLVisitor()
-    print(ast_root.accept(xml_visitor))
+    #print(ast_root.accept(xml_visitor))
 
 if __name__ == "__main__":
     main()
