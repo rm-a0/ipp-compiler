@@ -605,12 +605,46 @@ class SemanticAnalyzer(ASTVisitor):
         self.scopes = {
             "global": {
                 "variables": {},
-                "parent": {},
+                "parent": None,
                 "children" : []
             }
         }
+        self.scopes["global"]["variables"]["self"] = True
+        self.scopes["global"]["variables"]["super"] = True
+        self.scopes["global"]["variables"]["nil"] = True
+        self.scopes["global"]["variables"]["true"] = True
+        self.scopes["global"]["variables"]["false"] = True
         self.current_scope = [self.scopes["global"]]
         self.current_class = None
+
+    def enter_scope(self):
+        new_scope = {
+            "variables": {},
+            "parent": self.current_scope[-1],
+            "children": []
+        }
+        self.current_scope[-1]["children"].append(new_scope)
+        self.current_scope.append(new_scope)
+
+    def exit_scope(self):
+        self.current_scope.pop()
+
+    # Append variable to current scope
+    def declare_variable(self, variable):
+        if variable == "_":
+            return # Skip '_' declaration
+
+        #if variable in self.current_scope[-1]["variables"]:
+        #    sys.exit(ErrorType.SEMANTIC_ERROR_VAR_COLLISION.value)
+
+        self.current_scope[-1]["variables"][variable] = True
+
+    # Check if variable is in the scope
+    def check_variable(self, variable):
+        for scope in reversed(self.current_scope):
+            if variable in scope["variables"] or variable == "_":
+                return True
+        return False
 
     def analyze(self, ast):
         self.visit_program(ast)
@@ -636,10 +670,21 @@ class SemanticAnalyzer(ASTVisitor):
         if class_name in self.class_symtable:
             sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
 
+        if node.parent_class not in self.class_symtable:
+            sys.exit(ErrorType.SEMANTIC_ERROR_UNDEFINED_USE.value)
+
         self.class_symtable[class_name] = {
             "parent": node.parent_class,
             "methods": {}
         }
+
+        # First add all methods to symtable (order of declarations doesnt matter)
+        for method in node.methods:
+            method_id = method.selector
+            arity = method.arity
+            if method_id in self.class_symtable[class_name]["methods"]:
+                sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+            self.class_symtable[class_name]["methods"][method_id] = {"arity": arity}
 
         for method in node.methods:
             method.accept(self)
@@ -649,19 +694,23 @@ class SemanticAnalyzer(ASTVisitor):
         method_id = node.selector
         arity = node.arity
 
-        if method_id in self.class_symtable[class_name]["methods"]:
-            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
-
         self.check_arity(arity, node.block.param_count)
-        self.class_symtable[class_name]["methods"][method_id] = {"arity": arity}
         
         node.block.accept(self)
 
     def visit_block(self, node):
-        print('TODO')
+        self.enter_scope()
+        for param in node.parameters:
+            self.declare_variable(param)
+        
+        for statement in node.statements:
+            statement.accept(self)
+
+        self.exit_scope()
 
     def visit_statement(self, node):
-        pass
+        self.declare_variable(node.identifier)
+
     def visit_send(self, node):
         pass
     def visit_variable(self, node):
