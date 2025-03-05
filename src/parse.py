@@ -151,15 +151,6 @@ class LiteralNode(ASTNode):
     def accept(self, visitor):
         return visitor.visit_literal(self)
 
-class SelectorNode(ASTNode):
-    def __init__(self, identifier, expression_sel, args=None):
-        self.identifier = identifier
-        self.args = args
-        self.selector = expression_sel
-
-    def accept(self, visitor):
-        return visitor.visit_selector(self)
-
 # ASTVisitor interface
 class ASTVisitor(ABC):
     @abstractmethod
@@ -659,6 +650,15 @@ class SemanticAnalyzer(ASTVisitor):
                 return True
         return False
 
+    def check_selector(self, selector):
+        class_name = self.current_class
+        while class_name is not None:
+            # Iterate parent classes
+            if selector in self.class_symtable[class_name]["methods"]:
+                return True
+            class_name = self.class_symtable[class_name]["parent"]
+        return False
+
     def analyze(self, ast):
         self.visit_program(ast)
         self.check_main_class()
@@ -723,13 +723,22 @@ class SemanticAnalyzer(ASTVisitor):
 
     def visit_statement(self, node):
         self.declare_variable(node.identifier)
+        node.expression.accept(self)
 
     def visit_send(self, node):
-        pass
+        # Check if selector is in methods
+        if self.check_selector(node.selector) == False:
+            print(f'selector: {node.selector}')
+            sys.exit(ErrorType.SEMANTIC_ERROR_UNDEFINED_USE.value)
+        node.receiver.accept(self)
+
+        for arg in node.args:
+            arg.accept(self)
+
     def visit_variable(self, node):
-        pass
+        print(f'visiting_var: {node.name}')
     def visit_literal(self, node):
-        pass
+        print(f'visiting_literal: {node.value}')
 
 # Main function
 def main():
