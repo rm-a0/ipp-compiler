@@ -605,6 +605,7 @@ class SemanticAnalyzer(ASTVisitor):
         self.scopes = {
             "global": {
                 "variables": {},
+                "parameters": {},
                 "parent": None,
                 "children" : []
             }
@@ -620,6 +621,7 @@ class SemanticAnalyzer(ASTVisitor):
     def enter_scope(self):
         new_scope = {
             "variables": {},
+            "parameters": {},
             "parent": self.current_scope[-1],
             "children": []
         }
@@ -634,15 +636,26 @@ class SemanticAnalyzer(ASTVisitor):
         if variable == "_":
             return # Skip '_' declaration
 
-        #if variable in self.current_scope[-1]["variables"]:
-        #    sys.exit(ErrorType.SEMANTIC_ERROR_VAR_COLLISION.value)
+        # Check for variable collision with parameter
+        if variable in self.current_scope[-1]["parameters"]:
+            sys.exit(ErrorType.SEMANTIC_ERROR_VAR_COLLISION.value)
 
         self.current_scope[-1]["variables"][variable] = True
 
+    def declare_param(self, parameter):
+        # Check is parameter names are identiacl
+        if parameter in self.current_scope[-1]["parameters"]:
+            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+
+        self.current_scope[-1]["parameters"][parameter] = True
+
     # Check if variable is in the scope
     def check_variable(self, variable):
+        # Skip '_' check
+        if variable == "_":
+            return True
         for scope in reversed(self.current_scope):
-            if variable in scope["variables"] or variable == "_":
+            if variable in scope["variables"] or variable in scope["parameters"]:
                 return True
         return False
 
@@ -658,7 +671,7 @@ class SemanticAnalyzer(ASTVisitor):
     # Check if number of colons corresponds to number of arguments in method
     def check_arity(self, method_arity, param_count):
         if method_arity != param_count:
-            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+            sys.exit(ErrorType.SEMANTIC_ERROR_MISSMATCH.value)
 
     def visit_program(self, node):
         for class_node in node.class_nodes:
@@ -701,7 +714,7 @@ class SemanticAnalyzer(ASTVisitor):
     def visit_block(self, node):
         self.enter_scope()
         for param in node.parameters:
-            self.declare_variable(param)
+            self.declare_param(param)
         
         for statement in node.statements:
             statement.accept(self)
