@@ -650,15 +650,6 @@ class SemanticAnalyzer(ASTVisitor):
                 return True
         return False
 
-    def check_selector(self, selector):
-        class_name = self.current_class
-        while class_name is not None:
-            # Iterate parent classes
-            if selector in self.class_symtable[class_name]["methods"]:
-                return True
-            class_name = self.class_symtable[class_name]["parent"]
-        return False
-
     def analyze(self, ast):
         self.visit_program(ast)
         self.check_main_class()
@@ -703,8 +694,6 @@ class SemanticAnalyzer(ASTVisitor):
             method.accept(self)
 
     def visit_method(self, node):
-        class_name = self.current_class
-        method_id = node.selector
         arity = node.arity
 
         self.check_arity(arity, node.block.param_count)
@@ -726,19 +715,18 @@ class SemanticAnalyzer(ASTVisitor):
         node.expression.accept(self)
 
     def visit_send(self, node):
-        # Check if selector is in methods
-        if self.check_selector(node.selector) == False:
-            print(f'selector: {node.selector}')
-            sys.exit(ErrorType.SEMANTIC_ERROR_UNDEFINED_USE.value)
         node.receiver.accept(self)
 
         for arg in node.args:
             arg.accept(self)
 
     def visit_variable(self, node):
-        print(f'visiting_var: {node.name}')
+        if self.check_variable(node.name) == False:
+            sys.exit(ErrorType.SEMANTIC_ERROR_UNDEFINED_USE.value)
+
     def visit_literal(self, node):
-        print(f'visiting_literal: {node.value}')
+        # Litera does not need semantic check
+        pass
 
 # Main function
 def main():
@@ -764,7 +752,7 @@ def main():
 
     # Generare XML
     xml_visitor = XMLVisitor()
-    #print(ast_root.accept(xml_visitor))
+    print(ast_root.accept(xml_visitor))
 
 if __name__ == "__main__":
     main()
