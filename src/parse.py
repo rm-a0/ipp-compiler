@@ -21,6 +21,10 @@ class ErrorType(Enum):
     SEMANTIC_ERROR_OTHER = 35
     INTERNAL_ERROR = 99
 
+def print_err(msg, error_type):
+    print(f"Error: {msg}", file=sys.stderr)
+    sys.exit(error_type.value)
+
 # Enum for token types
 class TokenType(Enum):
     # Reserved keywords
@@ -40,6 +44,7 @@ class TokenType(Enum):
     BLOCK_BC = "Block"
     # Identifiers
     IDENTIFIER = "Identifier"
+    SELECTOR = "Selector"
     CLASS_IDENTIFIER = "class"
     # Other tokens
     ASSIGN = "assign"
@@ -183,7 +188,8 @@ class XMLVisitor(ASTVisitor):
     def visit_program(self, node):
         program = ET.Element('program', language="SOL25")
         if node.first_comment:
-            program.set('description', node.first_comment)
+            description = node.first_comment
+            program.set('description', description)
 
         for class_node in node.class_nodes:
             program.append(class_node.accept(self))
@@ -263,6 +269,7 @@ class Lexer:
         self.src_code = src_code
         self.token_tuple_arr = [
             # Reserved keywords
+            (TokenType.SELECTOR, r'[a-z_][a-zA-Z0-9_]*:'),
             (TokenType.CLASS_KW, r'class'),
             (TokenType.SELF_KW, r'self'),
             (TokenType.SUPER_KW, r'super'),
@@ -291,12 +298,12 @@ class Lexer:
             (TokenType.L_PARENT, r'\('),
             (TokenType.R_PARENT, r'\)'),
             (TokenType.PIPE, r'\|'),
-            (TokenType.STRING, r"'([^'\\]*(\\['n\\][^'\\]*)*)'"),
+            (TokenType.STRING, r"'([^'\\\n]*(\\['n\\][^'\\\n]*)*)'"),
             (TokenType.INTEGER, r'[+-]?\d+'),
             # Whitespace and comments
             (TokenType.WHITESPACE, r'[ \t]+'),
             (TokenType.NEWLINE, r'\n'),
-            (TokenType.COMMENT, r'"(?s:.*?)"'),
+            (TokenType.COMMENT, r'"(?s:.*?)(?=|\n|$)"'),
             # Invalid token
             (TokenType.INVALID, r'.')
         ]
@@ -317,14 +324,19 @@ class Lexer:
         while idx < len(self.src_code):
             match = self.get_token(self.src_code, idx)
             if not match:
-                sys.exit(ErrorType.LEXICAL_ERROR.value)
+                print_err("Unexpected regex pattern", ErrorType.LEXICAL_ERROR)
 
             token_type = match.lastgroup
             token_value = match.group(token_type)
-            # Skip whitespace and comments
-            if token_type == TokenType.COMMENT.value and comment_flag == False:
-                first_comment = token_value.strip('"')
-                comment_flag = True
+            # Detect invalid tokens, skip/validate comments and whitespace
+            if token_type == TokenType.INVALID.value:
+                print_err("Invalid token", ErrorType.LEXICAL_ERROR)
+            elif token_type == TokenType.COMMENT.value:
+                if token_value[-1] != '"':
+                    print_err("Unclosed comment detected", ErrorType.LEXICAL_ERROR)
+                elif comment_flag == False:
+                    first_comment = token_value.strip('"')
+                    comment_flag = True
             elif token_type in {TokenType.WHITESPACE.value, TokenType.NEWLINE.value, TokenType.COMMENT.value}:
                 pass
             # Create token
@@ -387,7 +399,7 @@ class Parser:
     # Check current token if it matches expected type, return current token and advance token
     def consume_token(self, expected_type: TokenType):
         if not self.current_token.check_token(expected_type):
-            sys.exit(ErrorType.SYNTAX_ERROR.value)
+            print_err(f"Unexpected token type: {self.current_token}", ErrorType.SYNTAX_ERROR)
         token = self.current_token
         self.advance_token()
         return token
@@ -421,7 +433,7 @@ class Parser:
             block = self.parse_block()
             return block
         else:
-            sys.exit(ErrorType.SYNTAX_ERROR.value)
+            print_err(f"Unexpected token while parsing expression base {self.current_token}", ErrorType.SYNTAX_ERROR)
 
     # Parse expression
     def parse_expression(self, end_token):
@@ -430,9 +442,12 @@ class Parser:
         args = []
 
         while True:
-            selector_parts.append(self.consume_token(TokenType.IDENTIFIER).value)
-            if self.current_token.check_token(TokenType.COLON):
-                selector_parts.append(":")
+            if self.current_token.check_token(TokenType.IDENTIFIER):
+                selector = self.current_token.value
+                self.advance_token()
+                return SendNode(base, selector, args)
+            if self.current_token.check_token(TokenType.SELECTOR):
+                selector_parts.append(self.current_token.value)
                 self.advance_token()
                 arg = self.parse_expression_base()
                 args.append(arg)
@@ -442,7 +457,7 @@ class Parser:
             elif self.current_token.check_token(end_token):
                 return SendNode(base, "".join(selector_parts), args)
             else:
-                sys.exit(ErrorType.SYNTAX_ERROR.value)
+                print_err(f"Unexpected token while parsing expression {self.current_token}", ErrorType.SYNTAX_ERROR)
 
     # Parse statement
     def parse_statemenet(self):
@@ -471,18 +486,18 @@ class Parser:
 
     # Parse method
     def parse_method(self):
-        selector = self.consume_token(TokenType.IDENTIFIER).value
-        param_count = 0
+        selector = ""
+        if self.current_token.check_token(TokenType.SELECTOR):
+            selector = self.consume_token(TokenType.SELECTOR).value
+            param_count = 1
+        elif self.current_token.check_token(TokenType.IDENTIFIER):
+            selector = self.consume_token(TokenType.IDENTIFIER).value
+            param_count = 0
 
-        # Check if there are multiple identifiers
-        if self.current_token.check_token(TokenType.COLON):
-            selector += ":"
+        # Check if there are multiple selectors
+        while not self.current_token.check_token(TokenType.L_BRACKET):
+            selector += self.consume_token(TokenType.SELECTOR).value
             param_count += 1
-            self.advance_token()
-            while not self.current_token.check_token(TokenType.L_BRACKET):
-                selector += self.consume_token(TokenType.IDENTIFIER).value
-                selector += self.consume_token(TokenType.COLON).value
-                param_count += 1
 
         block = self.parse_block()
 
@@ -495,7 +510,7 @@ class Parser:
 
         # Check if current token type is class identifier or builtin class
         if self.current_token.type not in self.builtin_classes | {TokenType.CLASS_IDENTIFIER}:
-            sys.exit(ErrorType.SYNTAX_ERROR.value)
+            print_err(f"Unexpected token while parsing class {self.current_token}", ErrorType.SYNTAX_ERROR)
         parent_class = self.current_token
         self.advance_token()
         self.consume_token(TokenType.L_BRACE)
@@ -629,14 +644,14 @@ class SemanticAnalyzer(ASTVisitor):
 
         # Check for variable collision with parameter
         if variable in self.current_scope[-1]["parameters"]:
-            sys.exit(ErrorType.SEMANTIC_ERROR_VAR_COLLISION.value)
+            print_err(f"Variable not within the scope: {variable}", ErrorType.SEMANTIC_ERROR_VAR_COLLISION)
 
         self.current_scope[-1]["variables"][variable] = True
 
     def declare_param(self, parameter):
-        # Check is parameter names are identiacl
+        # Check if parameter names are identical
         if parameter in self.current_scope[-1]["parameters"]:
-            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+            print_err(f"Identical names of parameters: {parameter}", ErrorType.SEMANTIC_ERROR_OTHER)
 
         self.current_scope[-1]["parameters"][parameter] = True
 
@@ -657,12 +672,18 @@ class SemanticAnalyzer(ASTVisitor):
     # Check if class identifier 'Main' is in class symbtable
     def check_main_class(self):
         if "Main" not in self.class_symtable:
-            sys.exit(ErrorType.SEMANTIC_ERROR_MISSING_MAIN.value)
+            print_err("Missing Main class", ErrorType.SEMANTIC_ERROR_MISSING_MAIN)
+        elif "run" not in self.class_symtable["Main"]["methods"]:
+            print_err("Missing run in Main class", ErrorType.SEMANTIC_ERROR_MISSING_MAIN)
+
+    def check_class(self, class_id):
+        if class_id not in self.class_symtable:
+            print_err(f"Undefined class `{class_id}`", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
     # Check if number of colons corresponds to number of arguments in method
     def check_arity(self, method_arity, param_count):
         if method_arity != param_count:
-            sys.exit(ErrorType.SEMANTIC_ERROR_MISSMATCH.value)
+            print_err(f"Arrity missmatch, expected: {method_arity}, got: {param_count}", ErrorType.SEMANTIC_ERROR_MISSMATCH)
 
     def visit_program(self, node):
         for class_node in node.class_nodes:
@@ -672,10 +693,10 @@ class SemanticAnalyzer(ASTVisitor):
         class_name = node.identifier
         self.current_class = class_name
         if class_name in self.class_symtable:
-            sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+            print_err(f"Class `{class_name}` already exists", ErrorType.SEMANTIC_ERROR_OTHER)
 
         if node.parent_class not in self.class_symtable:
-            sys.exit(ErrorType.SEMANTIC_ERROR_UNDEFINED_USE.value)
+            print_err(f"Parent class `{node.parent_class}` doesnt exist", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
         self.class_symtable[class_name] = {
             "parent": node.parent_class,
@@ -687,7 +708,7 @@ class SemanticAnalyzer(ASTVisitor):
             method_id = method.selector
             arity = method.arity
             if method_id in self.class_symtable[class_name]["methods"]:
-                sys.exit(ErrorType.SEMANTIC_ERROR_OTHER.value)
+                print_err(f"Method `{method_id}` already exists", ErrorType.SEMANTIC_ERROR_OTHER)
             self.class_symtable[class_name]["methods"][method_id] = {"arity": arity}
 
         for method in node.methods:
@@ -722,10 +743,11 @@ class SemanticAnalyzer(ASTVisitor):
 
     def visit_variable(self, node):
         if self.check_variable(node.name) == False:
-            sys.exit(ErrorType.SEMANTIC_ERROR_UNDEFINED_USE.value)
+            print_err(f" Variable `{node.name}` is not within the scope", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
     def visit_literal(self, node):
-        # Litera does not need semantic check
+        if node.type.value == "class":
+            self.check_class(node.value)
         pass
 
 # Main function
@@ -735,8 +757,11 @@ def main():
         usage=  f"python {sys.argv[0]} < input_file"
     )
 
-    if len(sys.argv) > 1:
+    if len(sys.argv) == 2 and (sys.argv[1] in ['-h', '--help']):
         arg_parser.parse_args()
+    elif len(sys.argv) != 1:
+        print("Incorrect number of parameters", file=sys.stderr)
+        sys.exit(ErrorType.MISSING_PARAM.value)
 
     # Initialize lexer and tokenize input
     lexer = Lexer(sys.stdin.read())
