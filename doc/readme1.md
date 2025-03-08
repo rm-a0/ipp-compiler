@@ -28,3 +28,5 @@ The `SemanticAnalyzer` class is responsible for performing semantic analysis on 
 ### XML Visitor
 The `XMLVisitor` class is used for generating XML representation of AST. It utilizes multiple methods for traversing
 the AST and converts its structure into formated XML using `ElementTree` from `xml.etree.ElementTree` module and `minidom` from `xml.dom` module.
+
+## Extensions and Additional Functionality

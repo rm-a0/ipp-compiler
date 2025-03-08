@@ -677,12 +677,22 @@ class SemanticAnalyzer(ASTVisitor):
 
     def check_method(self, class_, method):
         while class_:
-            print(class_)
             methods = self.class_symtable.get(class_, {}).get("methods", {})
             if method in methods:
                 return True
             
             class_ = self.class_symtable.get(class_, {}).get("parent")
+
+    def check_circular_dependency(self, class_name):
+        visited = set()
+        temp_class = class_name
+        while temp_class:
+            if temp_class in visited:
+                print_err(f"Circular dependency detected for `{class_name}`", ErrorType.SEMANTIC_ERROR_OTHER)
+
+            visited.add(temp_class)
+            temp_class = self.class_symtable.get(temp_class, {}).get("parent")
+            
 
     def analyze(self, ast):
         self.visit_program(ast)
@@ -732,6 +742,8 @@ class SemanticAnalyzer(ASTVisitor):
         class_name = node.identifier
         self.current_class = class_name
 
+        # Check circular dependency
+        self.check_circular_dependency(class_name)
         # First add all methods to symtable (order of declarations doesnt matter)
         for method in node.methods:
             method_id = method.selector
