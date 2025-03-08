@@ -31,17 +31,17 @@ class TokenType(Enum):
     CLASS_KW = "class_"
     SELF_KW = "self"
     SUPER_KW = "super"
-    NIL_KW = "nil"
-    TRUE_KW = "true"
-    FALSE_KW = "false"
+    NIL_KW = "Nil"
+    TRUE_KW = "True"
+    FALSE_KW = "False"
     # Built-in classes
     OBJECT_BC = "Object"
-    NIL_BC = "Nil"
-    TRUE_BC = "True"
-    FALSE_BC = "False"
+    NIL_BC = "Nil_"
+    TRUE_BC = "True_"
+    FALSE_BC = "False_"
     INT_BC = "Integer_"
     STRING_BC = "String_"
-    BLOCK_BC = "Block"
+    BLOCK_BC = "Block_"
     # Identifiers
     IDENTIFIER = "Identifier"
     SELECTOR = "Selector"
@@ -246,7 +246,11 @@ class XMLVisitor(ASTVisitor):
 
     def visit_literal(self, node):
         # Dictionary because class is builtin keyword
-        return ET.Element('literal', **{'class': node.type.value, 'value': str(node.value)})
+        value = str(node.value)
+        # Strip strings
+        if value.startswith("'") and value.endswith("'"):
+            value = value[1:-1]
+        return ET.Element('literal', **{'class': node.type, 'value': value})
 
     def prettify(self, element):
         rough_string = ET.tostring(element, encoding="UTF-8", xml_declaration=True)
@@ -415,7 +419,7 @@ class Parser:
         if self.current_token.type in self.literal_tokens:
             token = self.current_token
             self.advance_token()
-            return LiteralNode(token.type, token.value)
+            return LiteralNode(token.type.value, token.value)
         elif self.current_token.type in self.builtin_classes:
             token = self.current_token
             self.advance_token()
@@ -455,7 +459,10 @@ class Parser:
                 if self.current_token.check_token(end_token):
                     return SendNode(base, "".join(selector_parts), args)
             elif self.current_token.check_token(end_token):
-                return SendNode(base, "".join(selector_parts), args)
+                if not selector_parts:
+                    return base
+                else:
+                    return SendNode(base, "".join(selector_parts), args)
             else:
                 print_err(f"Unexpected token while parsing expression {self.current_token}", ErrorType.SYNTAX_ERROR)
 
@@ -541,6 +548,8 @@ class SemanticAnalyzer(ASTVisitor):
             "Object": {
                 "parent": None,
                 "methods": {
+                    "new" : {"arity": 0},
+                    "from:" : {"arity": 1},
                     "identicalTo:": {"arity": 1},
                     "equalTo:": {"arity": 1},
                     "asString": {"arity": 0},
@@ -578,6 +587,7 @@ class SemanticAnalyzer(ASTVisitor):
                     "asString": {"arity": 0},
                     "asInteger": {"arity": 0},
                     "print": {"arity": 0},
+                    "read": {"arity": 0},
                 }
             },
             "Block": {
@@ -665,6 +675,15 @@ class SemanticAnalyzer(ASTVisitor):
                 return True
         return False
 
+    def check_method(self, class_, method):
+        while class_:
+            print(class_)
+            methods = self.class_symtable.get(class_, {}).get("methods", {})
+            if method in methods:
+                return True
+            
+            class_ = self.class_symtable.get(class_, {}).get("parent")
+
     def analyze(self, ast):
         self.visit_program(ast)
         self.check_main_class()
@@ -686,22 +705,32 @@ class SemanticAnalyzer(ASTVisitor):
             print_err(f"Arrity missmatch, expected: {method_arity}, got: {param_count}", ErrorType.SEMANTIC_ERROR_MISSMATCH)
 
     def visit_program(self, node):
+        # Declare all classes
+        for class_node in node.class_nodes:
+            class_name = class_node.identifier
+            if class_name in self.class_symtable:
+                print_err(f"Class `{class_name}` already exists", ErrorType.SEMANTIC_ERROR_OTHER)
+
+            self.class_symtable[class_name] = {
+                "parent": None,  
+                "methods" : {}
+            }
+
+        # Declare all parent classes
+        for class_node in node.class_nodes:
+            class_name = class_node.identifier
+            parent_class = class_node.parent_class
+            if parent_class not in self.class_symtable:
+                print_err(f"Parent class `{parent_class}` doesnt exist", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
+
+            self.class_symtable[class_name]["parent"] = parent_class
+
         for class_node in node.class_nodes:
             class_node.accept(self)
 
     def visit_class(self, node):
         class_name = node.identifier
         self.current_class = class_name
-        if class_name in self.class_symtable:
-            print_err(f"Class `{class_name}` already exists", ErrorType.SEMANTIC_ERROR_OTHER)
-
-        if node.parent_class not in self.class_symtable:
-            print_err(f"Parent class `{node.parent_class}` doesnt exist", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
-
-        self.class_symtable[class_name] = {
-            "parent": node.parent_class,
-            "methods": {}
-        }
 
         # First add all methods to symtable (order of declarations doesnt matter)
         for method in node.methods:
@@ -736,6 +765,10 @@ class SemanticAnalyzer(ASTVisitor):
         node.expression.accept(self)
 
     def visit_send(self, node):
+        if hasattr(node.receiver, 'type') and node.receiver.type == "class":
+            class_name = node.receiver.value
+            if not self.check_method(class_name, node.selector):
+                print_err(f"Class `{class_name}` has no method `{node.selector}`", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
         node.receiver.accept(self)
 
         for arg in node.args:
@@ -746,7 +779,7 @@ class SemanticAnalyzer(ASTVisitor):
             print_err(f" Variable `{node.name}` is not within the scope", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
     def visit_literal(self, node):
-        if node.type.value == "class":
+        if node.type == "class":
             self.check_class(node.value)
         pass
 
