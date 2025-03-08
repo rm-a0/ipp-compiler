@@ -29,4 +29,17 @@ The `SemanticAnalyzer` class is responsible for performing semantic analysis on 
 The `XMLVisitor` class is used for generating XML representation of AST. It utilizes multiple methods for traversing
 the AST and converts its structure into formated XML using `ElementTree` from `xml.etree.ElementTree` module and `minidom` from `xml.dom` module.
 
-## Extensions and Additional Functionality
+## Additional Functionality and Extension
+- OOP and Visitor pattern
+- Forward Class Declaration Support
+- Circular Dependency Prevention
+- Prevention for Class, Method and Parameter Redeclaration
+
+## Known Issues and Possible Improvements
+- **Variable Shadowing:** Nested blocks do not properly handle variable shadowing, which could lead to unintended behavior.
+
+- **Error Messages:** Error messages could be enhanced with more context (e.g., scope, line in the source code or inheritance chain details).
+
+- **Type Annotations:** Adding more type annotaitons could improve maintainability. Type hints were intentionally used sparingly to keep the code simple and readable, adding them only where necessary for clarity.
+
+- **Performance Optimization:** While the lexer and parser are optimized (e.g., using enums), the semantic analyzer is slower and could benefit from performance improvements.
