@@ -6,9 +6,12 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from enum import Enum
 from abc import ABC, abstractmethod
+from typing import Pattern, Tuple, List, Optional
 
-# Error types
 class ErrorType(Enum):
+    """
+    Predefined error types
+    """
     MISSING_PARAM = 10
     ERROR_STDIN = 11
     ERROR_STDOUT = 12
@@ -21,12 +24,17 @@ class ErrorType(Enum):
     SEMANTIC_ERROR_OTHER = 35
     INTERNAL_ERROR = 99
 
-def print_err(msg, error_type):
+def print_err(msg: str, error_type: ErrorType) -> None:
+    """
+    Print error message and exit with specified error 
+    """
     print(f"Error: {msg}", file=sys.stderr)
     sys.exit(error_type.value)
 
-# Enum for token types
 class TokenType(Enum):
+    """
+    Token types mapped to strings
+    """
     # Reserved keywords
     CLASS_KW = "class_"
     SELF_KW = "self"
@@ -67,30 +75,42 @@ class TokenType(Enum):
     INVALID = "INVALID"
     EOF = "EOF"
 
-# Token class
 class Token: 
+    """
+    Represents a token in SOL25 language. Contains type and optionally a value    
+    """
     def __init__(self, token_type, value=None):
         self.type = token_type
         self.value = value
     
     def __repr__(self):
+        """
+        Returns string represnetation of token
+        """
         return f"Token(type: {self.type.value}, value: {self.value!r})"
 
-    # Check if token attributes are the same as expected attributes
-    def check_token(self, expected_type, expected_value=None):
+    def check_token(self, expected_type: TokenType, expected_value=None) -> bool:
+        """
+        Check if token attributes are the same as expected attributes
+        """
         if self.type != expected_type:
             return False
         if expected_value is not None and self.value != expected_value:
             return False
         return True
 
-# ASTNode classes
 class ASTNode:
+    """
+    Base class for all AST nodes
+    """
     def accept(self, visitor):
         raise NotImplementedError
 
 class ProgramNode(ASTNode):
-    def __init__(self, class_nodes, first_comment):
+    """
+    Program node contains array of class nodes and fist comment
+    """
+    def __init__(self, class_nodes: List['ClassNode'], first_comment: str):
         self.first_comment = first_comment
         self.class_nodes = class_nodes
 
@@ -98,7 +118,10 @@ class ProgramNode(ASTNode):
         return visitor.visit_program(self)
 
 class ClassNode(ASTNode):
-    def __init__(self, identifier, parent_class, methods):
+    """
+    Class node contains class identifier, parent class and array of method nodes
+    """
+    def __init__(self, identifier: str, parent_class: str, methods: List['MethodNode']):
         self.identifier = identifier
         self.parent_class = parent_class
         self.methods = methods
@@ -107,7 +130,10 @@ class ClassNode(ASTNode):
         return visitor.visit_class(self)
 
 class MethodNode(ASTNode):
-    def __init__(self, selector, arity, block):
+    """
+    Method node contains selector, arity and block node
+    """
+    def __init__(self, selector: ASTNode, arity: int, block: 'BlockNode'):
         self.selector = selector
         self.arity = arity
         self.block = block
@@ -116,7 +142,10 @@ class MethodNode(ASTNode):
         return visitor.visit_method(self)
 
 class BlockNode(ASTNode):
-    def __init__(self, parameters, statements):
+    """
+    Block node contains array of parameters and array of statement nodes
+    """
+    def __init__(self, parameters: str, statements: List['StatementNode']):
         self.parameters = parameters
         self.param_count = len(parameters)
         self.statements = statements
@@ -125,7 +154,10 @@ class BlockNode(ASTNode):
         return visitor.visit_block(self)
 
 class StatementNode(ASTNode):
-    def __init__(self, identifier, expression):
+    """
+    Statement node contains identifier and expression node (send/variable/literal node)
+    """
+    def __init__(self, identifier: str, expression: ASTNode):
         self.identifier = identifier
         self.expression = expression
 
@@ -133,7 +165,11 @@ class StatementNode(ASTNode):
         return visitor.visit_statement(self)
 
 class SendNode(ASTNode):
-    def __init__(self, receiver, selector, args=None):
+    """
+    Send node contains receiver node, select and array of argument 
+    nodes (variable/litera/block nodes)
+    """
+    def __init__(self, receiver: ASTNode, selector: str, args=None):
         self.receiver = receiver
         self.selector = selector
         self.args = args
@@ -142,22 +178,30 @@ class SendNode(ASTNode):
         return visitor.visit_send(self)
 
 class VariableNode(ASTNode):
-    def __init__(self, name):
+    """
+    Variable node contains variable identifier
+    """
+    def __init__(self, name: str):
         self.name = name
 
     def accept(self, visitor):
         return visitor.visit_variable(self)
 
 class LiteralNode(ASTNode):
-    def __init__(self, literal_type, value):
+    """
+    Literal node contains type and value
+    """
+    def __init__(self, literal_type: str, value: str):
         self.type = literal_type
         self.value = value
     
     def accept(self, visitor):
         return visitor.visit_literal(self)
 
-# ASTVisitor interface
 class ASTVisitor(ABC):
+    """
+    Abstract interface for visitor methods
+    """
     @abstractmethod
     def visit_program(self, node):
         pass
@@ -183,9 +227,15 @@ class ASTVisitor(ABC):
     def visit_literal(self, node):
         pass
 
-# XMLVisitor class
 class XMLVisitor(ASTVisitor):
-    def visit_program(self, node):
+    """
+    Converts AST to desired XML format
+    """
+    def visit_program(self, node: 'ProgramNode') -> ET.Element:
+        """
+        Construct element for program, add description, append class elements 
+        and return prettified program element
+        """
         program = ET.Element('program', language="SOL25")
         if node.first_comment:
             description = node.first_comment
@@ -196,7 +246,10 @@ class XMLVisitor(ASTVisitor):
 
         return self.prettify(program)
 
-    def visit_class(self, node):
+    def visit_class(self, node: 'ClassNode') -> ET.Element:
+        """
+        Construct and return element for class, append class elements to it
+        """
         class_elem = ET.Element('class', name=node.identifier, parent=node.parent_class)
 
         for method_node in node.methods:
@@ -204,13 +257,20 @@ class XMLVisitor(ASTVisitor):
 
         return class_elem
 
-    def visit_method(self, node):
+    def visit_method(self, node: 'MethodNode') -> ET.Element:
+        """
+        Construct and return method element and append block element to it
+        """
         method_elem = ET.Element('method', selector=node.selector)
         method_elem.append(node.block.accept(self))
 
         return method_elem
 
-    def visit_block(self, node):
+    def visit_block(self, node: 'BlockNode') -> ET.Element:
+        """
+        Construct and return element, add parameter subelement and append assign element
+        with variable subbelement to it
+        """
         block_elem = ET.Element('block', arity=str(node.param_count))
 
         for index, parameter in enumerate(node.parameters):
@@ -224,12 +284,19 @@ class XMLVisitor(ASTVisitor):
 
         return block_elem
 
-    def visit_statement(self, node):
+    def visit_statement(self, node: 'StatementNode') -> ET.Element:
+        """
+        Construct and return element for exrpression and append send element to it 
+        """
         expr_elem = ET.Element('expr')
         expr_elem.append(node.expression.accept(self))
         return expr_elem
 
-    def visit_send(self, node):
+    def visit_send(self, node) -> ET.Element:
+        """
+        Construct and return element for send, add receiver subelement, append corresponding
+        receiver element and add subelements for arguments with subelements for expression
+        """
         send_elem =  ET.Element('send', selector=node.selector)
         receiver_elem = ET.SubElement(send_elem, 'expr')
         receiver_elem.append(node.receiver.accept(self))
@@ -241,24 +308,33 @@ class XMLVisitor(ASTVisitor):
 
         return send_elem 
 
-    def visit_variable(self, node):
+    def visit_variable(self, node) -> ET.Element:
+        """
+        Construct and return variable element
+        """
         return ET.Element('var', name=node.name)
 
-    def visit_literal(self, node):
-        # Dictionary because class is builtin keyword
+    def visit_literal(self, node) -> ET.Element:
+        """
+        Construct and return literal element
+        """
         value = str(node.value)
         # Strip strings
         if value.startswith("'") and value.endswith("'"):
             value = value[1:-1]
+        # Dictionary because class is builtin keyword
         return ET.Element('literal', **{'class': node.type, 'value': value})
 
-    def prettify(self, element):
+    def prettify(self, element) -> str:
+        """
+        Converts an XML element into a prettified string with proper encoding.
+        """
         rough_string = ET.tostring(element, encoding="UTF-8", xml_declaration=True)
         rough_string = rough_string.decode("UTF-8")
         parsed = minidom.parseString(rough_string)
         pretty_string = parsed.toprettyxml(indent="  ")
 
-        # Hardcoed encoding because it didnt work
+        # Hardcoed encoding because for some reason it was not originally displayed
         if not pretty_string.startswith('<?xml version="1.0" encoding="UTF-8"?>'):
             if pretty_string.startswith('<?xml'):
                 end_of_first_line = pretty_string.find('?>') + 2
@@ -267,9 +343,11 @@ class XMLVisitor(ASTVisitor):
 
         return pretty_string 
 
-# Lexer class
 class Lexer:
-    def __init__(self, src_code):
+    """
+    Tokenizes SOL25 source code into a list of tokens
+    """
+    def __init__(self, src_code: str):
         self.src_code = src_code
         self.token_tuple_arr = [
             # Reserved keywords
@@ -315,12 +393,18 @@ class Lexer:
         self.get_token = self.compile_regex()
 
     # Combine and compile regex patterns
-    def compile_regex(self):
+    def compile_regex(self) -> Pattern[str]:
+        """
+        Join regex patterns and returns compiled pattern
+        """
         self.token_regex = '|'.join(f'(?P<{token_type.name}>{pattern})' for token_type, pattern in self.token_tuple_arr)
         return re.compile(self.token_regex).match
 
     # Populate token array
-    def tokenize(self):
+    def tokenize(self) -> Tuple[List[Token], Optional[str]]:
+        """
+        Tokenizes the source code and returns a list of tokens along with the first comment (if it exists).
+        """
         idx = 0
         comment_flag = False
         first_comment = None
@@ -354,8 +438,10 @@ class Lexer:
 
         return tokens, first_comment
 
-# Parser class
 class Parser:
+    """
+    Parses tokenized source code and constructs AST
+    """
     def __init__(self, tokens):
         self.tokens = tokens
         self.token_len = len(tokens)
@@ -393,7 +479,7 @@ class Parser:
         }
 
     # Advance current token and increment token_idx if possible
-    def advance_token(self):
+    def advance_token(self) -> None:
         if self.token_idx < self.token_len - 1:
             self.token_idx += 1
             self.current_token = self.tokens[self.token_idx]
@@ -401,21 +487,21 @@ class Parser:
             self.current_token = Token(TokenType.EOF)
 
     # Check current token if it matches expected type, return current token and advance token
-    def consume_token(self, expected_type: TokenType):
+    def consume_token(self, expected_type: TokenType) -> Token:
         if not self.current_token.check_token(expected_type):
             print_err(f"Unexpected token type: {self.current_token}", ErrorType.SYNTAX_ERROR)
         token = self.current_token
         self.advance_token()
         return token
 
-    def peek_token(self, expected_type: TokenType):
+    def peek_token(self, expected_type: TokenType) -> bool:
         if self.token_idx < self.token_len - 1:
             if self.tokens[self.token_idx + 1].check_token(expected_type):
                 return True
         return False
 
     # Parse expression base
-    def parse_expression_base(self):
+    def parse_expression_base(self) -> ASTNode:
         if self.current_token.type in self.literal_tokens:
             token = self.current_token
             self.advance_token()
@@ -440,7 +526,11 @@ class Parser:
             print_err(f"Unexpected token while parsing expression base {self.current_token}", ErrorType.SYNTAX_ERROR)
 
     # Parse expression
-    def parse_expression(self, end_token):
+    def parse_expression(self, end_token: TokenType) -> ASTNode:
+        """
+        Parses an expression until the specified end token is encountered.
+        Handles literals, variables, and message sends.
+        """
         base = self.parse_expression_base()
         selector_parts = []
         args = []
@@ -467,7 +557,7 @@ class Parser:
                 print_err(f"Unexpected token while parsing expression {self.current_token}", ErrorType.SYNTAX_ERROR)
 
     # Parse statement
-    def parse_statemenet(self):
+    def parse_statemenet(self) -> ASTNode:
         token_id = self.consume_token(TokenType.IDENTIFIER)
         self.consume_token(TokenType.ASSIGN)
         expression = self.parse_expression(TokenType.DOT)
@@ -476,7 +566,7 @@ class Parser:
         return StatementNode(token_id.value, expression)
 
     # Parse block
-    def parse_block(self):
+    def parse_block(self) -> ASTNode:
         self.consume_token(TokenType.L_BRACKET)
         parameters = []
         while not self.current_token.check_token(TokenType.PIPE):
@@ -492,7 +582,7 @@ class Parser:
         return BlockNode(parameters, statements)
 
     # Parse method
-    def parse_method(self):
+    def parse_method(self) -> ASTNode:
         selector = ""
         if self.current_token.check_token(TokenType.SELECTOR):
             selector = self.consume_token(TokenType.SELECTOR).value
@@ -511,7 +601,7 @@ class Parser:
         return MethodNode(selector, param_count, block)
 
     # Parse class
-    def parse_class(self):
+    def parse_class(self) -> ASTNode:
         class_id = self.consume_token(TokenType.CLASS_IDENTIFIER)
         self.consume_token(TokenType.COLON)
 
@@ -532,7 +622,7 @@ class Parser:
         return ClassNode(class_id.value, parent_class.value, methods)
 
     # Parse program and return root of AST (Program node)
-    def parse_program(self, first_comment):
+    def parse_program(self, first_comment: str) -> ASTNode:
         if first_comment == None:
             first_comment = ""
         class_nodes = []
@@ -543,6 +633,9 @@ class Parser:
         return ProgramNode(class_nodes, first_comment)
 
 class SemanticAnalyzer(ASTVisitor):
+    """
+    Perform semantic checks on constructed AST
+    """
     def __init__(self):
         self.class_symtable = {
             "Object": {
@@ -634,7 +727,7 @@ class SemanticAnalyzer(ASTVisitor):
         self.current_scope = [self.scopes["global"]]
         self.current_class = None
 
-    def enter_scope(self):
+    def enter_scope(self) -> None:
         new_scope = {
             "variables": {},
             "parameters": {},
@@ -647,8 +740,7 @@ class SemanticAnalyzer(ASTVisitor):
     def exit_scope(self):
         self.current_scope.pop()
 
-    # Append variable to current scope
-    def declare_variable(self, variable):
+    def declare_variable(self, variable: str) -> None:
         if variable == "_":
             return # Skip '_' declaration
 
@@ -658,7 +750,7 @@ class SemanticAnalyzer(ASTVisitor):
 
         self.current_scope[-1]["variables"][variable] = True
 
-    def declare_param(self, parameter):
+    def declare_param(self, parameter: str) -> None:
         # Check if parameter names are identical
         if parameter in self.current_scope[-1]["parameters"]:
             print_err(f"Identical names of parameters: {parameter}", ErrorType.SEMANTIC_ERROR_OTHER)
@@ -666,7 +758,7 @@ class SemanticAnalyzer(ASTVisitor):
         self.current_scope[-1]["parameters"][parameter] = True
 
     # Check if variable is in the scope
-    def check_variable(self, variable):
+    def check_variable(self, variable: str) -> bool:
         # Skip '_' check
         if variable == "_":
             return True
@@ -675,7 +767,7 @@ class SemanticAnalyzer(ASTVisitor):
                 return True
         return False
 
-    def check_method(self, class_, method):
+    def check_method(self, class_: str, method: str) -> bool:
         while class_:
             methods = self.class_symtable.get(class_, {}).get("methods", {})
             if method in methods:
@@ -683,7 +775,10 @@ class SemanticAnalyzer(ASTVisitor):
             
             class_ = self.class_symtable.get(class_, {}).get("parent")
 
-    def check_circular_dependency(self, class_name):
+    def check_circular_dependency(self, class_name: str) -> None:
+        """
+        Checks for circular inheritance in the class hierarchy
+        """
         visited = set()
         temp_class = class_name
         while temp_class:
@@ -694,27 +789,27 @@ class SemanticAnalyzer(ASTVisitor):
             temp_class = self.class_symtable.get(temp_class, {}).get("parent")
             
 
-    def analyze(self, ast):
+    def analyze(self, ast: ASTNode) -> None:
         self.visit_program(ast)
         self.check_main_class()
 
     # Check if class identifier 'Main' is in class symbtable
-    def check_main_class(self):
+    def check_main_class(self) -> None:
         if "Main" not in self.class_symtable:
             print_err("Missing Main class", ErrorType.SEMANTIC_ERROR_MISSING_MAIN)
         elif "run" not in self.class_symtable["Main"]["methods"]:
             print_err("Missing run in Main class", ErrorType.SEMANTIC_ERROR_MISSING_MAIN)
 
-    def check_class(self, class_id):
+    def check_class(self, class_id: str) -> None:
         if class_id not in self.class_symtable:
             print_err(f"Undefined class `{class_id}`", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
     # Check if number of colons corresponds to number of arguments in method
-    def check_arity(self, method_arity, param_count):
+    def check_arity(self, method_arity: int, param_count: int) -> None:
         if method_arity != param_count:
             print_err(f"Arrity missmatch, expected: {method_arity}, got: {param_count}", ErrorType.SEMANTIC_ERROR_MISSMATCH)
 
-    def visit_program(self, node):
+    def visit_program(self, node) -> None:
         # Declare all classes
         for class_node in node.class_nodes:
             class_name = class_node.identifier
@@ -738,7 +833,7 @@ class SemanticAnalyzer(ASTVisitor):
         for class_node in node.class_nodes:
             class_node.accept(self)
 
-    def visit_class(self, node):
+    def visit_class(self, node) -> None:
         class_name = node.identifier
         self.current_class = class_name
 
@@ -755,14 +850,14 @@ class SemanticAnalyzer(ASTVisitor):
         for method in node.methods:
             method.accept(self)
 
-    def visit_method(self, node):
+    def visit_method(self, node) -> None:
         arity = node.arity
 
         self.check_arity(arity, node.block.param_count)
         
         node.block.accept(self)
 
-    def visit_block(self, node):
+    def visit_block(self, node) -> None:
         self.enter_scope()
         for param in node.parameters:
             self.declare_param(param)
@@ -772,11 +867,11 @@ class SemanticAnalyzer(ASTVisitor):
 
         self.exit_scope()
 
-    def visit_statement(self, node):
+    def visit_statement(self, node) -> None:
         self.declare_variable(node.identifier)
         node.expression.accept(self)
 
-    def visit_send(self, node):
+    def visit_send(self, node) -> None:
         if hasattr(node.receiver, 'type') and node.receiver.type == "class":
             class_name = node.receiver.value
             if not self.check_method(class_name, node.selector):
@@ -786,14 +881,13 @@ class SemanticAnalyzer(ASTVisitor):
         for arg in node.args:
             arg.accept(self)
 
-    def visit_variable(self, node):
+    def visit_variable(self, node) -> None:
         if self.check_variable(node.name) == False:
             print_err(f" Variable `{node.name}` is not within the scope", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
-    def visit_literal(self, node):
+    def visit_literal(self, node) -> None:
         if node.type == "class":
             self.check_class(node.value)
-        pass
 
 # Main function
 def main():
