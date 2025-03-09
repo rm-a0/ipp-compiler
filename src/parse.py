@@ -478,16 +478,20 @@ class Parser:
             TokenType.IDENTIFIER
         }
 
-    # Advance current token and increment token_idx if possible
     def advance_token(self) -> None:
+        """
+        Advance current token and increment token_idx if possible
+        """
         if self.token_idx < self.token_len - 1:
             self.token_idx += 1
             self.current_token = self.tokens[self.token_idx]
         else:
             self.current_token = Token(TokenType.EOF)
 
-    # Check current token if it matches expected type, return current token and advance token
     def consume_token(self, expected_type: TokenType) -> Token:
+        """
+        Check current token if it matches expected type, return current token and advance token
+        """
         if not self.current_token.check_token(expected_type):
             print_err(f"Unexpected token type: {self.current_token}", ErrorType.SYNTAX_ERROR)
         token = self.current_token
@@ -495,13 +499,23 @@ class Parser:
         return token
 
     def peek_token(self, expected_type: TokenType) -> bool:
+        """
+        Check if token after next token in the array matches expected type
+        """
         if self.token_idx < self.token_len - 1:
             if self.tokens[self.token_idx + 1].check_token(expected_type):
                 return True
         return False
 
-    # Parse expression base
     def parse_expression_base(self) -> ASTNode:
+        """
+        Parse expression base based on the grammar rules:
+        ExprBase -> ⟨int⟩ | ⟨str⟩ | ⟨id⟩ | ⟨Cid⟩
+        ExprBase -> Block
+        ExprBase -> ( Expr )
+
+        source: ipp25spec
+        """
         if self.current_token.type in self.literal_tokens:
             token = self.current_token
             self.advance_token()
@@ -525,11 +539,18 @@ class Parser:
         else:
             print_err(f"Unexpected token while parsing expression base {self.current_token}", ErrorType.SYNTAX_ERROR)
 
-    # Parse expression
     def parse_expression(self, end_token: TokenType) -> ASTNode:
         """
         Parses an expression until the specified end token is encountered.
         Handles literals, variables, and message sends.
+        Slightly modified version of the grammar rules (because of AST construction):
+        Expr -> ExprBase ExprTail
+        ExprTail -> ⟨id⟩
+        ExprTail -> ExprSel
+        ExprSel -> ⟨id:⟩ ExprBase ExprSel
+        ExprSel -> ε
+
+        source: ipp25spec
         """
         base = self.parse_expression_base()
         selector_parts = []
@@ -556,8 +577,14 @@ class Parser:
             else:
                 print_err(f"Unexpected token while parsing expression {self.current_token}", ErrorType.SYNTAX_ERROR)
 
-    # Parse statement
     def parse_statemenet(self) -> ASTNode:
+        """
+        Parse statement based on the grammar rule:
+        BlockStat -> ⟨id⟩ := Expr . BlockStat
+        BlockStat -> ε
+
+        source: ipp25spec
+        """
         token_id = self.consume_token(TokenType.IDENTIFIER)
         self.consume_token(TokenType.ASSIGN)
         expression = self.parse_expression(TokenType.DOT)
@@ -565,8 +592,15 @@ class Parser:
 
         return StatementNode(token_id.value, expression)
 
-    # Parse block
     def parse_block(self) -> ASTNode:
+        """
+        Parse block based on the grammar rule:
+        Block -> [ BlockP ar | BlockStat ]
+        BlockPar -> ⟨:id⟩ BlockPar
+        BlockPar -> ε
+
+        source: ipp25spec
+        """
         self.consume_token(TokenType.L_BRACKET)
         parameters = []
         while not self.current_token.check_token(TokenType.PIPE):
@@ -581,8 +615,18 @@ class Parser:
 
         return BlockNode(parameters, statements)
 
-    # Parse method
     def parse_method(self) -> ASTNode:
+        """
+        Parse method and selector based on the grammar rule:
+        Method -> Selector Block Method
+        Method ->
+        Selector -> ⟨id⟩
+        Selector -> ⟨id:⟩ SelectorTail
+        SelectorTail -> ⟨id:⟩ SelectorTail
+        SelectorTail -> ε
+
+        source: ipp25spec
+        """
         selector = ""
         if self.current_token.check_token(TokenType.SELECTOR):
             selector = self.consume_token(TokenType.SELECTOR).value
@@ -600,8 +644,13 @@ class Parser:
 
         return MethodNode(selector, param_count, block)
 
-    # Parse class
     def parse_class(self) -> ASTNode:
+        """
+        Parse class based on the grammar rule:
+        Class -> class ⟨Cid⟩ : ⟨Cid⟩ { Method }
+
+        source: ipp25spec
+        """
         class_id = self.consume_token(TokenType.CLASS_IDENTIFIER)
         self.consume_token(TokenType.COLON)
 
@@ -621,8 +670,12 @@ class Parser:
 
         return ClassNode(class_id.value, parent_class.value, methods)
 
-    # Parse program and return root of AST (Program node)
     def parse_program(self, first_comment: str) -> ASTNode:
+        """
+        Parse program based on the grammar rule:
+        Program -> Class Program
+        Program -> ε
+        """
         if first_comment == None:
             first_comment = ""
         class_nodes = []
@@ -728,6 +781,9 @@ class SemanticAnalyzer(ASTVisitor):
         self.current_class = None
 
     def enter_scope(self) -> None:
+        """
+        Enter a new scope for variable and parameter declarations.
+        """
         new_scope = {
             "variables": {},
             "parameters": {},
@@ -738,27 +794,38 @@ class SemanticAnalyzer(ASTVisitor):
         self.current_scope.append(new_scope)
 
     def exit_scope(self):
+        """
+        Exit current scope
+        """
         self.current_scope.pop()
 
     def declare_variable(self, variable: str) -> None:
+        """
+        Declare new variable, if variable collides with block parameters exit with error
+        """
         if variable == "_":
             return # Skip '_' declaration
 
         # Check for variable collision with parameter
         if variable in self.current_scope[-1]["parameters"]:
-            print_err(f"Variable not within the scope: {variable}", ErrorType.SEMANTIC_ERROR_VAR_COLLISION)
+            print_err(f"Variable {variable} collides with parameter", ErrorType.SEMANTIC_ERROR_VAR_COLLISION)
 
         self.current_scope[-1]["variables"][variable] = True
 
     def declare_param(self, parameter: str) -> None:
+        """
+        Declare block parameter, if parameter already exits exit with error
+        """
         # Check if parameter names are identical
         if parameter in self.current_scope[-1]["parameters"]:
             print_err(f"Identical names of parameters: {parameter}", ErrorType.SEMANTIC_ERROR_OTHER)
 
         self.current_scope[-1]["parameters"][parameter] = True
 
-    # Check if variable is in the scope
     def check_variable(self, variable: str) -> bool:
+        """
+        Check if variable is within the current scope
+        """
         # Skip '_' check
         if variable == "_":
             return True
@@ -768,6 +835,9 @@ class SemanticAnalyzer(ASTVisitor):
         return False
 
     def check_method(self, class_: str, method: str) -> bool:
+        """
+        Check if given method exists within specified class and its parents
+        """
         while class_:
             methods = self.class_symtable.get(class_, {}).get("methods", {})
             if method in methods:
@@ -790,27 +860,40 @@ class SemanticAnalyzer(ASTVisitor):
             
 
     def analyze(self, ast: ASTNode) -> None:
+        """
+        Start semantic analysis and perform main class check after
+        """
         self.visit_program(ast)
         self.check_main_class()
 
-    # Check if class identifier 'Main' is in class symbtable
     def check_main_class(self) -> None:
+        """
+        Check if class identifier 'Main' is in class symbtable
+        """
         if "Main" not in self.class_symtable:
             print_err("Missing Main class", ErrorType.SEMANTIC_ERROR_MISSING_MAIN)
         elif "run" not in self.class_symtable["Main"]["methods"]:
             print_err("Missing run in Main class", ErrorType.SEMANTIC_ERROR_MISSING_MAIN)
 
     def check_class(self, class_id: str) -> None:
+        """
+        Check if class is in the class symtable
+        """
         if class_id not in self.class_symtable:
             print_err(f"Undefined class `{class_id}`", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
-    # Check if number of colons corresponds to number of arguments in method
     def check_arity(self, method_arity: int, param_count: int) -> None:
+        """
+        Check if number of colons corresponds to number of arguments in method
+        """
         if method_arity != param_count:
             print_err(f"Arrity missmatch, expected: {method_arity}, got: {param_count}", ErrorType.SEMANTIC_ERROR_MISSMATCH)
 
     def visit_program(self, node) -> None:
-        # Declare all classes
+        """
+        Declare all classes, parent classes and check each class. This allows the user to define
+        the classes in any order they want.
+        """
         for class_node in node.class_nodes:
             class_name = class_node.identifier
             if class_name in self.class_symtable:
@@ -834,6 +917,9 @@ class SemanticAnalyzer(ASTVisitor):
             class_node.accept(self)
 
     def visit_class(self, node) -> None:
+        """
+        Check for circular dependency, add all methods to symtable and check each method
+        """
         class_name = node.identifier
         self.current_class = class_name
 
@@ -851,6 +937,9 @@ class SemanticAnalyzer(ASTVisitor):
             method.accept(self)
 
     def visit_method(self, node) -> None:
+        """
+        Perform arity check for method and check block node
+        """
         arity = node.arity
 
         self.check_arity(arity, node.block.param_count)
@@ -858,6 +947,9 @@ class SemanticAnalyzer(ASTVisitor):
         node.block.accept(self)
 
     def visit_block(self, node) -> None:
+        """
+        Enter scope, declare all parameters and check all statements
+        """
         self.enter_scope()
         for param in node.parameters:
             self.declare_param(param)
@@ -868,10 +960,17 @@ class SemanticAnalyzer(ASTVisitor):
         self.exit_scope()
 
     def visit_statement(self, node) -> None:
+        """
+        Declare all variables and check expression
+        """
         self.declare_variable(node.identifier)
         node.expression.accept(self)
 
     def visit_send(self, node) -> None:
+        """
+        Check receiver node and every argumens
+        """
+        # For some literal nodes perform method check
         if hasattr(node.receiver, 'type') and node.receiver.type == "class":
             class_name = node.receiver.value
             if not self.check_method(class_name, node.selector):
@@ -882,15 +981,24 @@ class SemanticAnalyzer(ASTVisitor):
             arg.accept(self)
 
     def visit_variable(self, node) -> None:
+        """
+        Check if variable is within the scope
+        """
         if self.check_variable(node.name) == False:
             print_err(f" Variable `{node.name}` is not within the scope", ErrorType.SEMANTIC_ERROR_UNDEFINED_USE)
 
     def visit_literal(self, node) -> None:
+        """
+        If node type is class check if it exists
+        """
         if node.type == "class":
             self.check_class(node.value)
 
-# Main function
 def main():
+    """
+    Initialize argparser, lexer, parser, semantic analyzer, semantic analyzer, xml visitor
+    and perform tokenization, parsing, semantic analysis, generate and print xml.
+    """
     arg_parser = argparse.ArgumentParser(
         description="Compiler for the imperative object-oriented programming language SOL25.",
         usage=  f"python {sys.argv[0]} < input_file"
