@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * IPP - PHP Project Interpreter
+ * @author Michal Repcik
+ */
+
 namespace IPP\Student;
 
 use DOMDocument;
@@ -12,20 +17,35 @@ class Interpreter extends AbstractInterpreter
     public function execute(): int
     {
         // TODO: Start your code here
+        // Hints:
+        // $val = $this->input->readString();
+        // $this->stdout->writeString("stdout");
+        // $this->stderr->writeString("stderr");
         // Check IPP\Core\AbstractInterpreter for predefined I/O objects:
-        $dom = $this->source->getDOMDocument();
+        $dom = $this->loadSource();
         
-        // Check if XML is valid
-        if (!$dom instanceof DOMDocument) {
-            $this->stderr->writeString("Error: Faled to load XML soruce\n");
+        $program = $dom->documentElement;
+        if ($dom === NULL) {
             return ReturnCode::INVALID_XML_ERROR;
         }
 
         $program = $dom->documentElement;
 
-        // $val = $this->input->readString();
-        // $this->stdout->writeString("stdout");
-        // $this->stderr->writeString("stderr");
-        return 0;
+        return ReturnCode::OK;
+    }
+
+    /**
+     * Loads the XML source from file or stdin using the SourceReader.
+     * @return ?DOMDocument Loaded DOM document or null
+     */
+    private function loadSource(): ?DOMDocument
+    {
+        try {
+            $dom = $this->source->getDOMDocument();
+            return $dom;
+        } catch (\Exception $e) {
+            $this->stderr->writeString("Error: failed loading XML: " . $e->getMessage() . "\n");
+            return null;
+        }
     }
 }
