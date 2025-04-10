@@ -5,7 +5,7 @@
  * @author Michal Repcik
  */
 
-namespace IPP\Student\AST;
+namespace IPP\Student;
 
 class SOLLiteral implements SOLExpression
 {

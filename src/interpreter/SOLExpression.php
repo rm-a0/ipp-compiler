@@ -5,6 +5,6 @@
  * @author Michal Repcik
  */
 
-namespace IPP\Student\AST;
+namespace IPP\Student;
 
 interface SOLExpression {}

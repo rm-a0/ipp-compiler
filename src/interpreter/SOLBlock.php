@@ -9,7 +9,7 @@ namespace IPP\Student;
 
 use DOMElement;
 
-class SOLBlock
+class SOLBlock implements SOLExpression
 {
     /** @var array<string> */
     private array $params = [];
@@ -20,7 +20,7 @@ class SOLBlock
     /**
      * Constructor for SOLBlock
      * @param array<string> $params
-     * @param array<array{0: string, 1: DOMElement}> $statements
+     * @param array<SOLStatement> $statements
      */
     public function __construct(array $params, array $statements)
     {
@@ -39,7 +39,7 @@ class SOLBlock
 
     /** 
      * Getter for statements
-     * @return array<array{0: string, 1: DOMElement}>  The array containing statements
+     * @return array<SOLStatement>  The array containing statements
      */
     public function getStatements(): array
     {

@@ -12,18 +12,11 @@ use DOMElement;
 use IPP\Core\AbstractInterpreter;
 use IPP\Core\ReturnCode;
 use IPP\Core\Exception\NotImplementedException;
-use IPP\Student\AST;
 
 class Interpreter extends AbstractInterpreter
 {
-    /** @var array<string, SOLClass> */
+    /** @var array<SOLClass> */
     private array $classes = [];
-
-    /** @var array<string, SOLObject> */
-    private array $instances = [];
-
-    /** @var array<string, mixed> */
-    private array $variables = [];
 
     public function execute(): int
     {
@@ -41,14 +34,48 @@ class Interpreter extends AbstractInterpreter
         }
 
         // Extract parsed classes from XMLParser
-        $classes = $xmlParser->getClasses();
-
-        if(!isset($classes["Main"])) {
+        $this->classes = array_merge($this->classes, $xmlParser->getClasses());
+        if (!isset($this->classes["Main"])) {
             $this->stderr->writeString("Error: Main class not found\n");
             exit(ReturnCode::PARSE_MAIN_ERROR);
         }
 
+        $mainClass = $this->classes["Main"];
+        $runBlock = $mainClass->getMethod("run");
+        if ($runBlock === null) {
+            $this->stderr->writeString("Error: run method not found in Main\n");
+            return ReturnCode::PARSE_MAIN_ERROR;
+        }
+
+        // Create instance of main class
+        $mainObj = new SOLObject($mainClass);
+        $env = new Environment();
+        $env->set("self", $mainObj);
+        $finalValue = $this->interpretBlock($runBlock, $mainObj, [], $env);
+        $this->stdout->writeString("Final value: '$finalValue'\n");
+
         return ReturnCode::OK;
+    }
+
+    private function interpretBlock(SOLBlock $block, SOLObject $target, array $args, Environment $env): mixed
+    {
+        $blockEnv = new Environment($env);
+        // Assign args to params
+        foreach ($block->getParams() as $i => $param) {
+            $blockEnv->set($param, $args[$i] ?? null);
+        }
+        $blockEnv->set("self", $target);
+        $lastValue = null;
+        foreach ($block->getStatements() as $stmt) {
+            $lastValue = $this->interpretStatement($stmt, $target, $blockEnv);
+        }
+
+        return $lastValue;
+    }
+
+    private function interpretStatement(SOLStatement $stmt, SOLObject $target, Environment $env)
+    {
+        return 1;
     }
 
     /**

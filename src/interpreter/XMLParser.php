@@ -11,13 +11,6 @@ use DOMDocument;
 use DOMElement;
 use IPP\Core\Interface\OutputWriter;
 use IPP\Core\ReturnCode;
-use IPP\Student\AST\SOLClass;
-use IPP\Student\AST\SOLBlock;
-use IPP\Student\AST\SOLExpression;
-use IPP\Student\AST\SOLLiteral;
-use IPP\Student\AST\SOLVariable;
-use IPP\Student\AST\SOLSend;
-use IPP\Student\AST\SOLStatement;
 
 class XMLParser
 {
