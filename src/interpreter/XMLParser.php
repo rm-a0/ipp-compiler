@@ -11,6 +11,13 @@ use DOMDocument;
 use DOMElement;
 use IPP\Core\Interface\OutputWriter;
 use IPP\Core\ReturnCode;
+use IPP\Student\AST\SOLClass;
+use IPP\Student\AST\SOLBlock;
+use IPP\Student\AST\SOLExpression;
+use IPP\Student\AST\SOLLiteral;
+use IPP\Student\AST\SOLVariable;
+use IPP\Student\AST\SOLSend;
+use IPP\Student\AST\SOLStatement;
 
 class XMLParser
 {
@@ -95,11 +102,128 @@ class XMLParser
 
     /**
      * Parses block element of the DOM document and creates block object
-     * @return ?SOLBlock Block object or null
+     * @return ?SOLBlock Block object
      */
     private function parseBlock(DOMElement $blockNode): ?SOLBlock
     {
-        return null;
+        $params = [];
+        $statements = [];
+        
+        // Parse parameters
+        foreach($blockNode->getElementsByTagName("parameter") as $paramNode) {
+            $paramName = $paramNode->getAttribute("name");
+            if (!empty($paramName)) {
+                $params[] = $paramName;
+            }
+        }
+        
+        // Parse assignments
+        foreach($blockNode->getElementsByTagName("assign") as $assignNode) {
+            $varNode = $assignNode->getElementsByTagName("var")->item(0);
+            $exprNode = $assignNode->getElementsByTagName("expr")->item(0);
+
+            if ($varNode && $exprNode && $varNode->hasAttribute("name")) {
+                $varName = $varNode->getAttribute("name");
+                $expr = $this->parseExpression($exprNode);
+                if ($expr === null) {
+                    $this->stderr->writeString("Invalid expression in assign to $varName\n");
+                    return null;
+                }
+                $statements[] = new SOLStatement($varName, $expr);
+            }
+            else {
+                $this->stderr->writeString("Invalid assign in block\n");
+                return null;
+            }
+        }
+
+        return new SOLBlock($params, $statements);
+    }
+
+    /**
+     * Parses expr element of the DOM document and creates expression object
+     * @return ?SOLExpression Expression object
+     */
+    private function parseExpression(DOMElement $exprNode): ?SOLExpression
+    {
+        $expressionElement = null;
+        foreach ($exprNode->childNodes as $child) {
+            if ($child instanceof DOMElement) {
+                if ($expressionElement !== null) {
+                    $this->stderr->writeString("Expression contains multiple elements\n");
+                    return null;
+                }
+                $expressionElement = $child;
+            }
+        }
+
+        if ($expressionElement === null) {
+            $this->stderr->writeString("Expression missing valid child element\n");
+            return null;
+        }
+
+        switch ($expressionElement->tagName) {
+            case "literal":
+                $class = $expressionElement->getAttribute("class");
+                $value = $expressionElement->getAttribute("value");
+                if (empty($class)) {
+                    $this->stderr->writeString("Literal missing class attribute\n");
+                    return null;
+                }
+                return new SOLLiteral($class, $value ?? "");
+
+            case "var":
+                $name = $expressionElement->getAttribute("name");
+                if (empty($name)) {
+                    $this->stderr->writeString("Variable missing name attribute\n");
+                    return null;
+                }
+                return new SOLVariable($name);
+
+            case "send":
+                $selector = $expressionElement->getAttribute("selector");
+                if (empty($selector)) {
+                    $this->stderr->writeString("Message send missing selector\n");
+                    return null;
+                }
+
+                $targetNode = $expressionElement->getElementsByTagName("expr")->item(0);
+                if (!$targetNode instanceof DOMElement) {
+                    $this->stderr->writeString("Message send missing target expression\n");
+                    return null;
+                }
+                $target = $this->parseExpression($targetNode);
+                if ($target === null) {
+                    return null;
+                }
+
+                $args = [];
+                foreach ($expressionElement->getElementsByTagName("arg") as $argNode) {
+                    $argExprNode = $argNode->getElementsByTagName("expr")->item(0);
+                    if ($argExprNode instanceof DOMElement) {
+                        $argExpr = $this->parseExpression($argExprNode);
+                        if ($argExpr === null) {
+                            return null;
+                        }
+                        $args[] = $argExpr;
+                    } else {
+                        $this->stderr->writeString("Argument missing expression\n");
+                        return null;
+                    }
+                }
+
+                return new SOLSend($selector, $target, $args);
+            case "block":
+                $block = $this->parseBlock($expressionElement);
+                if ($block === null) {
+                    $this->stderr->writeString("Could not parse block expression\n");
+                    return null;
+                }
+                return $block;
+            default:
+                $this->stderr->writeString("Unknown expression type: {$expressionElement->tagName}\n");
+                return null;
+        }
     }
 
     /**

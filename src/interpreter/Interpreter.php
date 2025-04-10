@@ -12,9 +12,19 @@ use DOMElement;
 use IPP\Core\AbstractInterpreter;
 use IPP\Core\ReturnCode;
 use IPP\Core\Exception\NotImplementedException;
+use IPP\Student\AST;
 
 class Interpreter extends AbstractInterpreter
 {
+    /** @var array<string, SOLClass> */
+    private array $classes = [];
+
+    /** @var array<string, SOLObject> */
+    private array $instances = [];
+
+    /** @var array<string, mixed> */
+    private array $variables = [];
+
     public function execute(): int
     {
         $dom = $this->loadSource();
@@ -35,7 +45,6 @@ class Interpreter extends AbstractInterpreter
 
         if(!isset($classes["Main"])) {
             $this->stderr->writeString("Error: Main class not found\n");
-            // return ReturnCode::PARSE_MAIN_ERROR;
             exit(ReturnCode::PARSE_MAIN_ERROR);
         }
 
