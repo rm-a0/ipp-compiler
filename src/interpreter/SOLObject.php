@@ -7,8 +7,6 @@
 
 namespace IPP\Student;
 
-use IPP\Student\AST\SOLClass;
-
 class SOLObject
 {
     private SOLClass $class;
