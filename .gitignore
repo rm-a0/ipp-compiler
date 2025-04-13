@@ -38,6 +38,7 @@ testdir/
 *.swp
 *.swo
 out.xml
+in*.txt
 
 # Cloned git repo
 ipp-core/

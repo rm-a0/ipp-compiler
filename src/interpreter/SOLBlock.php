@@ -9,7 +9,7 @@ namespace IPP\Student;
 
 use DOMElement;
 
-class SOLBlock implements SOLExpression
+class SOLBlock
 {
     /** @var array<string> */
     private array $params = [];

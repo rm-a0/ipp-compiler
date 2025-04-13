@@ -9,16 +9,21 @@ namespace IPP\Student;
 
 class SOLSend implements SOLExpression
 {
+    private SOLExpression $receiver;
     private string $selector;
-    private SOLExpression $target;
     /** @var array<SOLExpression> */
-    private array $arguments;
+    private array $args;
 
-    public function __construct(string $selector, SOLExpression $target, array $arguments)
+    public function __construct(string $selector, SOLExpression $receiver, array $args)
     {
         $this->selector = $selector;
-        $this->target = $target;
-        $this->arguments = $arguments;
+        $this->receiver = $receiver;
+        $this->args = $args;
+    }
+
+    public function getReceiver(): SOLExpression
+    {
+        return $this->receiver;
     }
 
     public function getSelector(): string
@@ -26,14 +31,8 @@ class SOLSend implements SOLExpression
         return $this->selector;
     }
 
-    public function getTarget(): SOLExpression
+    public function getArgs(): array
     {
-        return $this->target;
-    }
-
-    /** @return array<SOLExpression> */
-    public function getArguments(): array
-    {
-        return $this->arguments;
+        return $this->args;
     }
 }

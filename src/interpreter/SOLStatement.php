@@ -17,4 +17,14 @@ class SOLStatement
         $this->var = $var;
         $this->expr = $expr;
     }
+
+    public function getVarName(): string
+    {
+        return $this->var;
+    }
+
+    public function getExpr(): SOLExpression
+    {
+        return $this->expr; 
+    }
 }

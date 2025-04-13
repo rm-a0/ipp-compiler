@@ -9,9 +9,9 @@ namespace IPP\Student;
 
 class Environment
 {
+    private ?Environment $parent;
     /** @var array<string, mixed> */
     private array $vars = [];
-    private ?Environment $parent;
 
     public function __construct(?Environment $parent = null)
     {
@@ -25,12 +25,6 @@ class Environment
 
     public function get(string $name): mixed
     {
-        if (array_key_exists($name, $this->vars)) {
-            return $this->vars[$name];
-        }
-        if ($this->parent !== null) {
-            return $this->parent->get($name);
-        }
-        return null;
+        return $this->vars[$name] ?? $this->parent?->get($name);
     }
 }

@@ -212,7 +212,7 @@ class XMLParser
                     $this->stderr->writeString("Could not parse block expression\n");
                     return null;
                 }
-                return $block;
+                return new SOLBlockExpression($block);
             default:
                 $this->stderr->writeString("Unknown expression type: {$expressionElement->tagName}\n");
                 return null;

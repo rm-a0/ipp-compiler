@@ -10,7 +10,7 @@ namespace IPP\Student;
 class SOLClass
 { 
     private string $name;
-    private string $parent;
+    private ?string $parent;
 
     /** @var array<string, SOLBlock> */
     private array $methods;
@@ -20,7 +20,7 @@ class SOLClass
      * @param string $name The name of the class
      * @param string $parent The name of the parent class
      */
-    public function __construct(string $name, string $parent)
+    public function __construct(string $name, ?string $parent)
     {
         $this->name = $name;
         $this->parent = $parent;
@@ -61,7 +61,7 @@ class SOLClass
      * Getter for the parent class name
      * @return string The name of the parent class
      */
-    public function getParent(): string
+    public function getParentName(): string
     {
         return $this->parent;
     }

@@ -15,8 +15,31 @@ use IPP\Core\Exception\NotImplementedException;
 
 class Interpreter extends AbstractInterpreter
 {
-    /** @var array<SOLClass> */
+    /** @var array<string, SOLClass> */
     private array $classes = [];
+
+    public function findClass(string $name): ?SOLClass
+    {
+        if (!isset($this->classes[$name])) {
+            $this->stderr->writeString("Error: Class '$name' not found\n");
+            exit(ReturnCode::INVALID_SOURCE_STRUCTURE_ERROR);
+        }
+        return $this->classes[$name];
+    }
+
+    public function findMethod(SOLClass $class, string $selector): ?SOLBlock
+    {
+        $className = $class->getName();
+
+        $parentName = $class->getParentName();
+        if ($parentName !== null) {
+            $parentClass = $this->findClass($parentName);
+            if ($parentClass !== null) {
+                return $this->findMethod($parentClass, $selector);
+            }
+        }
+        return null;
+    }
 
     public function execute(): int
     {
@@ -29,9 +52,10 @@ class Interpreter extends AbstractInterpreter
         $xmlParser = new XMLParser($this->stderr);
         $parseResult = $xmlParser->parse($dom->documentElement);
         if ($parseResult != ReturnCode::OK) {
-            // return $parseResult;
             exit($parseResult);
         }
+        
+        $this->initializeBuiltIn();
 
         // Extract parsed classes from XMLParser
         $this->classes = array_merge($this->classes, $xmlParser->getClasses());
@@ -44,16 +68,31 @@ class Interpreter extends AbstractInterpreter
         $runBlock = $mainClass->getMethod("run");
         if ($runBlock === null) {
             $this->stderr->writeString("Error: run method not found in Main\n");
-            return ReturnCode::PARSE_MAIN_ERROR;
+            exit(ReturnCode::PARSE_MAIN_ERROR);
         }
 
         // Create instance of main class
         $mainObj = new SOLObject($mainClass);
-        $env = new Environment();
-        $env->set("self", $mainObj);
-        $finalValue = $this->interpretBlock($runBlock, $mainObj, [], $env);
-        $this->stdout->writeString("Final value: '$finalValue'\n");
 
+        // Initialize global environment
+        $globalEnv = new Environment();
+        $globalEnv->set("self", $mainObj);
+
+        // Create block object for run method
+        $lastObj = $this->interpretBlock($runBlock, $mainObj, [], $globalEnv);
+        if ($lastObj === null) {
+            $this->stdout->writeString("Run object results in null\n");
+        } elseif ($lastObj instanceof SOLObject) {
+            $this->stdout->writeString("Last value is instance of SOLObject\n");
+            $className = $lastObj->getClass()->getName();
+            $value = $lastObj->getInternalValue();
+            if (is_scalar($value)) {
+                $this->stdout->writeString("[$className: $value]\n");
+            } else {
+                $this->stdout->writeString("[$className]\n");
+            }
+        }
+        
         return ReturnCode::OK;
     }
 
@@ -62,6 +101,7 @@ class Interpreter extends AbstractInterpreter
         $blockEnv = new Environment($env);
         // Assign args to params
         foreach ($block->getParams() as $i => $param) {
+            // Should args be objects?
             $blockEnv->set($param, $args[$i] ?? null);
         }
         $blockEnv->set("self", $target);
@@ -73,9 +113,75 @@ class Interpreter extends AbstractInterpreter
         return $lastValue;
     }
 
-    private function interpretStatement(SOLStatement $stmt, SOLObject $target, Environment $env)
+    private function interpretStatement(SOLStatement $stmt, SOLObject $target, Environment $env): mixed
     {
-        return 1;
+        $varName = $stmt->getVarName();
+        $expr = $stmt->getExpr();
+        $value = $this->evaluateExpression($expr, $target, $env);
+        // Set variable in current scope and assign var/object to it
+        $env->set($varName, $value);
+        return $value;
+    }
+
+    private function evaluateExpression(SOLExpression $expr, SOLObject $target, Environment $env): mixed
+    {
+        if ($expr instanceof SOLLiteral) {
+            $className = $expr->getClass();
+            $value = $expr->getValue();
+            $class = $this->findClass($className);
+            if ($class === null) {
+                // TODO
+                return null;
+            }
+            return new SOLObject($class, $value);
+        }
+        elseif ($expr instanceof SOLBlockExpression) {
+            $class = $this->findClass('Block');
+            if ($class === null) {
+                // TODO
+                return null;
+            }
+            // Extract SOLBlock from expression and instanciate the block
+            $block = $expr->getBlock();
+            return new SOLObject($class, $block);
+        }
+        elseif ($expr instanceof SOLVariable) {
+            $varName = $expr->getName();
+            $value = $env->get($varName);
+            if ($value === null) {
+                // TODO
+                return null;
+            }
+            return $value;
+        }
+        elseif ($expr instanceof SOLSend) {
+
+        }
+        return null;
+    }
+
+    private function initializeBuiltIn(): void
+    {
+        $objectClass = new SOLClass('Object', null);
+        $this->classes['Object'] = $objectClass;
+
+        $integerClass = new SOLClass('Integer', 'Object');
+        $this->classes['Integer'] = $integerClass;
+
+        $blockClass = new SOLClass('Block', 'Object');
+        $this->classes['Block'] = $blockClass;
+
+        $nilClass = new SOLClass('Nil', 'Object');
+        $this->classes['Nil'] = $nilClass;
+
+        $stringClass = new SOLClass('String', 'Object');
+        $this->classes['String'] = $stringClass;
+
+        $trueClass = new SOLClass('True', 'Object');
+        $this->classes['True'] = $trueClass;
+
+        $falseClass = new SOLClass('False', 'Object');
+        $this->classes['False'] = $falseClass;
     }
 
     /**
