@@ -231,8 +231,7 @@ class Interpreter extends AbstractInterpreter
         // asString
         $objectClass->addMethod('asString', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
-                $stringClass = $this->findClass('String');
-                return new SOLObject($stringClass, '');
+                return new SOLObject($this->findClass('String'), '');
             }
         ));
         // is{cLass} all return false
@@ -263,6 +262,70 @@ class Interpreter extends AbstractInterpreter
 
         // Interger
         $integerClass = new SOLClass('Integer', 'Object');
+        // equalTo
+        $integerClass->addMethod('equalTo:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $trueClass = $this->findClass('True');
+                $falseClass = $this->findClass('False');
+                $isEqual = $receiver->getInternalValue() == $args[0]->getInternalValue();
+                return new SOLObject($isEqual ? $trueClass : $falseClass, null);
+            }
+        ));
+        // greaterThen:
+        $integerClass->addMethod('greaterThan:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $trueClass = $this->findClass('True');
+                $falseClass = $this->findClass('False');
+                $isEqual = $receiver->getInternalValue() > $args[0]->getInternalValue();
+                return new SOLObject($isEqual ? $trueClass : $falseClass, null);
+            }
+        ));
+        // plus:
+        $integerClass->addMethod('plus:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $result = $receiver->getInternalValue() + $args[0]->getInternalValue();
+                return new SOLObject($this->findClass('Integer'), $result);
+            }
+        ));
+        // minus:
+        $integerClass->addMethod('minus:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $result = $receiver->getInternalValue() - $args[0]->getInternalValue();
+                return new SOLObject($this->findClass('Integer'), $result);
+            }
+        ));
+        // multiplyBy:
+        $integerClass->addMethod('multiplyBy:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $result = $receiver->getInternalValue() * $args[0]->getInternalValue();
+                return new SOLObject($this->findClass('Integer'), $result);
+            }
+        ));
+        // divBy:
+        $integerClass->addMethod('divBy:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                if ($args[0]->getInternalValue() == 0) {
+                    $this->stderr->writeString("Division by 0 is not allowed\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
+                $result = intdiv((int) $receiver->getInternalValue(), (int) $args[0]->getInternalValue());
+                return new SOLObject($this->findClass('Integer'), (string) $result);
+            }
+        ));
+        // asString
+        $integerClass->addMethod('asString', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return new SOLObject($this->findClass('String'), $receiver->getInternalValue());
+            }
+        ));
+        // asInteger
+        $integerClass->addMethod('asInteger', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return $receiver;
+            }
+        ));
+        // timeRepeat
+        // TODO
         $this->classes['Integer'] = $integerClass;
 
         $blockClass = new SOLClass('Block', 'Object');
@@ -281,8 +344,6 @@ class Interpreter extends AbstractInterpreter
 
         $stringClass = new SOLClass('String', 'Object');
         $this->classes['String'] = $stringClass;
-
-
     }
 
     /**
