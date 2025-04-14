@@ -85,7 +85,7 @@ class XMLParser
                 return ReturnCode::INVALID_SOURCE_STRUCTURE_ERROR;
             }
 
-            $class->addMethod($selector, $block);
+            $class->addMethod($selector, new SOLMethod($block));
 
 
         }

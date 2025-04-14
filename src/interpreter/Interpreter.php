@@ -22,15 +22,19 @@ class Interpreter extends AbstractInterpreter
     {
         if (!isset($this->classes[$name])) {
             $this->stderr->writeString("Error: Class '$name' not found\n");
-            exit(ReturnCode::INVALID_SOURCE_STRUCTURE_ERROR);
+            exit(ReturnCode::PARSE_UNDEF_ERROR);
         }
         return $this->classes[$name];
     }
 
-    public function findMethod(SOLClass $class, string $selector): ?SOLBlock
+    public function findMethod(SOLClass $class, string $selector): ?SOLMethod
     {
-        $className = $class->getName();
+        $method = $class->getMethod($selector);
+        if ($method !== null) {
+            return $method;
+        }
 
+        // Check parent class
         $parentName = $class->getParentName();
         if ($parentName !== null) {
             $parentClass = $this->findClass($parentName);
@@ -38,7 +42,9 @@ class Interpreter extends AbstractInterpreter
                 return $this->findMethod($parentClass, $selector);
             }
         }
-        return null;
+
+        $this->stderr->writeString("Error: Method '$selector' not found\n");
+        exit(ReturnCode::PARSE_UNDEF_ERROR);
     }
 
     public function execute(): int
@@ -65,7 +71,8 @@ class Interpreter extends AbstractInterpreter
         }
 
         $mainClass = $this->classes["Main"];
-        $runBlock = $mainClass->getMethod("run");
+        $runMethod = $mainClass->getMethod("run");
+        $runBlock = $runMethod->getBlock();
         if ($runBlock === null) {
             $this->stderr->writeString("Error: run method not found in Main\n");
             exit(ReturnCode::PARSE_MAIN_ERROR);
@@ -141,12 +148,13 @@ class Interpreter extends AbstractInterpreter
                 // TODO
                 return null;
             }
-            // Extract SOLBlock from expression and instanciate the block
+            // Extract SOLBlock from expression and instantiate the block
             $block = $expr->getBlock();
             return new SOLObject($class, $block);
         }
         elseif ($expr instanceof SOLVariable) {
             $varName = $expr->getName();
+            // Get the object that the variable is tracking from environment
             $value = $env->get($varName);
             if ($value === null) {
                 // TODO
@@ -155,7 +163,26 @@ class Interpreter extends AbstractInterpreter
             return $value;
         }
         elseif ($expr instanceof SOLSend) {
+            // Transform receiver into SOLObject
+            $receiver = $this->evaluateExpression($expr->getReceiver(), $target, $env);
 
+            // Get selector and evaluate arguments
+            $selector = $expr->getSelector();
+            $args = array_map(fn($arg) => $this->evaluateExpression($arg, $target, $env), $expr->getArgs());
+
+            // Find method in receiver class
+            $class = $receiver->getClass();
+            $method = $this->findMethod($class, $selector);
+
+            // evaluate method if its native or user defined
+            if ($method->isNative()) {
+                $native = $method->getNative();
+                return $native($receiver, $args, $env);
+            }
+            else {
+                $block = $method->getBlock();
+                return $this->interpretBlock($block, $receiver, $args, $env);
+            }
         }
         return null;
     }

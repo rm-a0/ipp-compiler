@@ -8,61 +8,41 @@
 namespace IPP\Student;
 
 class SOLClass
-{ 
+{
     private string $name;
-    private ?string $parent;
+    private ?string $parentName;
 
-    /** @var array<string, SOLBlock> */
-    private array $methods;
+    /** @var array<string, SOLMethod> */
+    private array $methods = [];
 
-    /**
-     * Constructor for SOLClass
-     * @param string $name The name of the class
-     * @param string $parent The name of the parent class
-     */
-    public function __construct(string $name, ?string $parent)
+    public function __construct(string $name, ?string $parentName)
     {
         $this->name = $name;
-        $this->parent = $parent;
-        $this->methods = [];
+        $this->parentName = $parentName;
     }
 
-    /**
-     * Adds a method to the class
-     * @param string $selector The method selector (name)
-     * @param SOLBlock $block The block of code implementing the method
-     * @return void
-     */
-    public function addMethod(string $selector, SOLBlock $block): void
+    public function addMethod(string $selector, SOLMethod $method): void
     {
-        $this->methods[$selector] = $block;
+        $this->methods[$selector] = $method;
     }
 
-    /**
-     * Getter for method
-     * @param string $selector The method selector to look up
-     * @return SOLBlock|null The block associated with the selector
-     */
-    public function getMethod(string $selector): ?SOLBlock
+    public function getMethods(): array
+    {
+        return $this->methods;
+    }
+
+    public function getMethod($selector): ?SOLMethod
     {
         return $this->methods[$selector] ?? null;
     }
 
-    /**
-     * Getter for the class name
-     * @return string The name of the class
-     */
     public function getName(): string
     {
         return $this->name;
     }
 
-    /**
-     * Getter for the parent class name
-     * @return string The name of the parent class
-     */
-    public function getParentName(): string
+    public function getParentName(): ?string
     {
-        return $this->parent;
+        return $this->parentName;
     }
 }
