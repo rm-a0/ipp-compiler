@@ -189,26 +189,100 @@ class Interpreter extends AbstractInterpreter
 
     private function initializeBuiltIn(): void
     {
+        // True
+        $trueClass = new SOLClass('True', 'Object');
+        $this->classes['True'] = $trueClass;
+        // False
+        $falseClass = new SOLClass('False', 'Object');
+        $this->classes['False'] = $falseClass;
+
+        // Object
         $objectClass = new SOLClass('Object', null);
+        // identicalTo
+        $objectClass->addMethod('identicalTo:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $trueClass = $this->findClass('True');
+                $falseClass = $this->findClass('False');
+                $isIdentical = $receiver === $args[0];
+                return new SOLObject($isIdentical ? $trueClass : $falseClass, null);
+            }
+        ));
+        // equalTo
+        $objectClass->addMethod('equalTo:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $trueClass = $this->findClass('True');
+                $falseClass = $this->findClass('False');
+                $receiverValue = $receiver->getInternalValue();
+                $argValue = $args[0]->getInternalValue();
+
+                // If they do not have internal values call identicalTo method
+                if ($receiverValue === null && $argValue === null) {
+                    $class = $receiver->getClass();
+                    $method = $this->findMethod($class, 'identicalTo:');
+                    $native = $method->getNative();
+                    return $native($receiver, $args, $env);
+                }
+
+                // Compare internal values
+                $isEqual = $receiverValue == $argValue;
+                return new SOLObject($isEqual ? $trueClass : $falseClass, null);
+            }
+        ));
+        // asString
+        $objectClass->addMethod('asString', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $stringClass = $this->findClass('String');
+                return new SOLObject($stringClass, '');
+            }
+        ));
+        // is{cLass} all return false
+        $falseClass = $this->findClass('False');
+        $falseInstance = new SOLObject($falseClass, null); // Instance False
+
+        $objectClass->addMethod('isNumber', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($falseInstance): SOLObject {
+                return $falseInstance;
+            }
+        ));
+        $objectClass->addMethod('isString', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($falseInstance): SOLObject {
+                return $falseInstance;
+            }
+        ));
+        $objectClass->addMethod('isBlock', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($falseInstance): SOLObject {
+                return $falseInstance;
+            }
+        ));
+        $objectClass->addMethod('isNil', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($falseInstance): SOLObject {
+                return $falseInstance;
+            }
+        ));
         $this->classes['Object'] = $objectClass;
 
+        // Interger
         $integerClass = new SOLClass('Integer', 'Object');
         $this->classes['Integer'] = $integerClass;
 
         $blockClass = new SOLClass('Block', 'Object');
         $this->classes['Block'] = $blockClass;
 
+        // Nil
         $nilClass = new SOLClass('Nil', 'Object');
+        // asString
+        $nilClass->addMethod('asString', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $stringClass = $this->findClass('String');
+                return new SOLObject($stringClass, 'nil');
+            }
+        ));
         $this->classes['Nil'] = $nilClass;
 
         $stringClass = new SOLClass('String', 'Object');
         $this->classes['String'] = $stringClass;
 
-        $trueClass = new SOLClass('True', 'Object');
-        $this->classes['True'] = $trueClass;
 
-        $falseClass = new SOLClass('False', 'Object');
-        $this->classes['False'] = $falseClass;
     }
 
     /**
