@@ -19,9 +19,12 @@ class Interpreter extends AbstractInterpreter
     /** @var array<string, SOLClass> */
     private array $classes = [];
 
-    public function findClass(string $name): ?SOLClass
+    public function findClass(string $name, ?string $value = null): ?SOLClass
     {
-        if (!isset($this->classes[$name])) {
+        if ($name == 'class') {
+            return $this->findClass($value);
+        }
+        elseif (!isset($this->classes[$name])) {
             $this->stderr->writeString("Error: Class '$name' not found\n");
             exit(ReturnCode::PARSE_UNDEF_ERROR);
         }
@@ -45,7 +48,7 @@ class Interpreter extends AbstractInterpreter
         }
 
         $this->stderr->writeString("Error: Method '$selector' not found\n");
-        exit(ReturnCode::PARSE_UNDEF_ERROR);
+        exit(ReturnCode::INTERPRET_DNU_ERROR);
     }
 
     public function execute(): int
@@ -88,18 +91,18 @@ class Interpreter extends AbstractInterpreter
 
         // Create block object for run method
         $lastObj = $this->interpretBlock($runBlock, $mainObj, [], $globalEnv);
-        if ($lastObj === null) {
-            $this->stdout->writeString("Run object results in null\n");
-        } elseif ($lastObj instanceof SOLObject) {
-            $this->stdout->writeString("Last value is instance of SOLObject\n");
-            $className = $lastObj->getClass()->getName();
-            $value = $lastObj->getInternalValue();
-            if (is_scalar($value)) {
-                $this->stdout->writeString("[$className: $value]\n");
-            } else {
-                $this->stdout->writeString("[$className]\n");
-            }
-        }
+        //if ($lastObj === null) {
+        //    $this->stdout->writeString("Run object results in null\n");
+        //} elseif ($lastObj instanceof SOLObject) {
+        //    $this->stdout->writeString("Last value is instance of SOLObject\n");
+        //    $className = $lastObj->getClass()->getName();
+        //    $value = $lastObj->getInternalValue();
+        //    if (is_scalar($value)) {
+        //        $this->stdout->writeString("[$className: $value]\n");
+        //    } else {
+        //        $this->stdout->writeString("[$className]\n");
+        //    }
+        //}
         
         return ReturnCode::OK;
     }
@@ -143,19 +146,11 @@ class Interpreter extends AbstractInterpreter
         if ($expr instanceof SOLLiteral) {
             $className = $expr->getClass();
             $value = $expr->getValue();
-            $class = $this->findClass($className);
-            if ($class === null) {
-                // TODO
-                return null;
-            }
+            $class = $this->findClass($className, $value);
             return new SOLObject($class, $value);
         }
         elseif ($expr instanceof SOLBlockExpression) {
             $class = $this->findClass('Block');
-            if ($class === null) {
-                // TODO
-                return null;
-            }
             // Extract SOLBlock from expression and instantiate the block
             $block = $expr->getBlock();
             return new SOLObject($class, $block);
@@ -165,8 +160,8 @@ class Interpreter extends AbstractInterpreter
             // Get the object that the variable is tracking from environment
             $value = $env->get($varName);
             if ($value === null) {
-                // TODO
-                return null;
+                $this->stderr->writeString("Variable $varName does not exist in current scope\n");
+                exit(ReturnCode::INTERPRET_TYPE_ERROR);
             }
             return $value;
         }
@@ -199,9 +194,21 @@ class Interpreter extends AbstractInterpreter
     {
         // True
         $trueClass = new SOLClass('True', 'Object');
+        // not
+        $trueClass->addMethod('not', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return new SOLObject($this->findClass('False'), null);
+            }
+        ));
         $this->classes['True'] = $trueClass;
         // False
         $falseClass = new SOLClass('False', 'Object');
+        // not
+        $falseClass->addMethod('not', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return new SOLObject($this->findClass('True'), null);
+            }
+        ));
         $this->classes['False'] = $falseClass;
 
         // Object
@@ -297,6 +304,8 @@ class Interpreter extends AbstractInterpreter
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = $receiver->getInternalValue() + $args[0]->getInternalValue();
+                $rec = $receiver->getInternalValue();
+                $re = $args[0]->getInternalValue();
                 return new SOLObject($this->findClass('Integer'), $result);
             }
         ));
@@ -305,7 +314,6 @@ class Interpreter extends AbstractInterpreter
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 $argClass = $args[0]->getClass()->getName();
                 if ($argClass != 'Integer') {
-                    $this->stderr->writeString("Substraction by $argClass is not allowed\n");
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = $receiver->getInternalValue() - $args[0]->getInternalValue();
@@ -343,6 +351,7 @@ class Interpreter extends AbstractInterpreter
         // asString
         $integerClass->addMethod('asString', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $res = $receiver->getInternalValue();
                 return new SOLObject($this->findClass('String'), $receiver->getInternalValue());
             }
         ));
@@ -353,7 +362,7 @@ class Interpreter extends AbstractInterpreter
             }
         ));
         // timeRepeat
-        // TODO
+        // notimplementedyet
         $this->classes['Integer'] = $integerClass;
 
         // Nil
@@ -384,12 +393,7 @@ class Interpreter extends AbstractInterpreter
         // print
         $stringClass->addMethod('print', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
-                $value = $receiver->getInternalValue();
-                if (!is_string($value)) {
-                    $this->stderr->writeString("Error: Invalid string for print\n");
-                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
-                }
-                $this->stdout->writeString($value);
+                $this->stdout->writeString($receiver->getInternalValue());
                 return $receiver;
             }
         ));

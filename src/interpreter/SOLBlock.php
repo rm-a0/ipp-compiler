@@ -45,4 +45,9 @@ class SOLBlock
     {
         return $this->statements;
     }
+
+    public function getParameterCount(): int
+    {
+        return count($this->params);
+    }
 }

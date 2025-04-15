@@ -180,7 +180,13 @@ class XMLParser
                     return null;
                 }
 
-                $targetNode = $expressionElement->getElementsByTagName("expr")->item(0);
+                $targetNode = null;
+                foreach ($expressionElement->childNodes as $node) {
+                    if ($node instanceof DOMElement && $node->tagName === "expr") {
+                        $targetNode = $node;
+                        break;
+                    }
+                }
                 if (!$targetNode instanceof DOMElement) {
                     $this->stderr->writeString("Message send missing target expression\n");
                     return null;
@@ -191,21 +197,29 @@ class XMLParser
                 }
 
                 $args = [];
-                foreach ($expressionElement->getElementsByTagName("arg") as $argNode) {
-                    $argExprNode = $argNode->getElementsByTagName("expr")->item(0);
-                    if ($argExprNode instanceof DOMElement) {
+                foreach ($expressionElement->childNodes as $node) {
+                    if ($node instanceof DOMElement && $node->tagName === "arg") {
+                        $argExprNode = null;
+                        foreach ($node->childNodes as $child) {
+                            if ($child instanceof DOMElement && $child->tagName === "expr") {
+                                $argExprNode = $child;
+                                break;
+                            }
+                        }
+                        if (!$argExprNode instanceof DOMElement) {
+                            $this->stderr->writeString("Argument missing expression\n");
+                            return null;
+                        }
                         $argExpr = $this->parseExpression($argExprNode);
                         if ($argExpr === null) {
                             return null;
                         }
                         $args[] = $argExpr;
-                    } else {
-                        $this->stderr->writeString("Argument missing expression\n");
-                        return null;
                     }
                 }
 
                 return new SOLSend($selector, $target, $args);
+
             case "block":
                 $block = $this->parseBlock($expressionElement);
                 if ($block === null) {
