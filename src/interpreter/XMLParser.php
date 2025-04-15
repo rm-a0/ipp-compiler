@@ -163,7 +163,7 @@ class XMLParser
                     $this->stderr->writeString("Literal missing class attribute\n");
                     return null;
                 }
-                return new SOLLiteral($class, $value ?? "");
+                return new SOLLiteral($class, $value);
 
             case "var":
                 $name = $expressionElement->getAttribute("name");

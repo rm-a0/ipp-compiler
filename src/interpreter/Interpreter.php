@@ -104,6 +104,13 @@ class Interpreter extends AbstractInterpreter
         return ReturnCode::OK;
     }
 
+    /**
+     * Interprets block
+     * @param SOLBlock $block
+     * @param SOLObject $target
+     * @param array<mixed> $args
+     * @param Environment $env
+     */
     private function interpretBlock(SOLBlock $block, SOLObject $target, array $args, Environment $env): mixed
     {
         $blockEnv = new Environment($env);
@@ -471,9 +478,6 @@ class Interpreter extends AbstractInterpreter
                 // Extract substring (1-based to 0-based)
                 $length = $end - $start;
                 $substring = substr($receiverValue, $start - 1, $length);
-                if ($substring === false) {
-                    $substring = ''; // Handle edge cases (e.g., out-of-bounds)
-                }
 
                 return new SOLObject($stringClass, $substring);
             }
@@ -481,6 +485,34 @@ class Interpreter extends AbstractInterpreter
 
         // Block
         $blockClass = new SOLClass('Block', 'Object');
+        $blockClass->addMethod('whileTrue:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $receiverBlock = $receiver->getInternalValue();
+                $argBlock = $args[0];
+                if (!$receiverBlock instanceof SOLBlock || $argBlock->getClass()->getName() !== 'Block') {
+                    $this->stderr->writeString("Error: whileTrue: requires blocks\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                $trueClass = $this->findClass('True');
+                while (true) {
+                    $condition = $this->evaluateExpression(
+                        new SOLSend('value', new SOLBlockExpression($receiver->getInternalValue()), []),
+                        $receiver,
+                        $env
+                    );
+                    if ($condition->getClass() !== $trueClass) {
+                        break;
+                    }
+                    $this->evaluateExpression(
+                        new SOLSend('value', new SOLBlockExpression($argBlock->getInternalValue()), []),
+                        $argBlock,
+                        $env
+                    );
+                }
+                $nilClass = $this->findClass('Nil');
+                return new SOLObject($nilClass, null);
+            }
+        ));
         $this->classes['Block'] = $blockClass;
     }
 

@@ -14,6 +14,12 @@ class SOLSend implements SOLExpression
     /** @var array<SOLExpression> */
     private array $args;
 
+    /**
+     * Constructor for SOLSend
+     * @param string $selector
+     * @param SOLExpression $receiver
+     * @param array<SOLExpression> $args
+     */
     public function __construct(string $selector, SOLExpression $receiver, array $args)
     {
         $this->selector = $selector;
@@ -31,6 +37,10 @@ class SOLSend implements SOLExpression
         return $this->selector;
     }
 
+    /**
+     * Getter for args
+     * @return array<SOLExpression> $args
+     */
     public function getArgs(): array
     {
         return $this->args;

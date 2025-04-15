@@ -9,9 +9,9 @@ namespace IPP\Student;
 
 class SOLMethod
 {
-    private $native; // callable or SOLBlock
+    private mixed $native; // callable or SOLBlock
 
-    public function __construct($native)
+    public function __construct(mixed $native)
     {
         $this->native = $native;
     }

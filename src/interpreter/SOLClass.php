@@ -26,12 +26,16 @@ class SOLClass
         $this->methods[$selector] = $method;
     }
 
+    /**
+     * Get all methods
+     * @return array<SOLMethod> methods
+     */
     public function getMethods(): array
     {
         return $this->methods;
     }
 
-    public function getMethod($selector): ?SOLMethod
+    public function getMethod(string $selector): ?SOLMethod
     {
         return $this->methods[$selector] ?? null;
     }

@@ -14,7 +14,7 @@ class SOLBlock
     /** @var array<string> */
     private array $params = [];
 
-    /** @var array<array{0: string, 1: DOMElement}> */
+    /** @var array<SOLStatement> */
     private array $statements = [];
 
     /**

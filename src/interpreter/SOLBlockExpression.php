@@ -7,7 +7,7 @@
 
 namespace IPP\Student;
 
-class SOLBlockExpression extends SOLExpression
+class SOLBlockExpression implements SOLExpression
 {
     private SOLBlock $block;
 
