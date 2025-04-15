@@ -12,6 +12,7 @@ use DOMElement;
 use IPP\Core\AbstractInterpreter;
 use IPP\Core\ReturnCode;
 use IPP\Core\Exception\NotImplementedException;
+use IPP\Core\FileInputReader;
 
 class Interpreter extends AbstractInterpreter
 {
@@ -283,6 +284,11 @@ class Interpreter extends AbstractInterpreter
         // plus:
         $integerClass->addMethod('plus:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $argClass = $args[0]->getClass()->getName();
+                if ($argClass != 'Integer') {
+                    $this->stderr->writeString("Addition by $argClass is not allowed\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
                 $result = $receiver->getInternalValue() + $args[0]->getInternalValue();
                 return new SOLObject($this->findClass('Integer'), $result);
             }
@@ -290,6 +296,11 @@ class Interpreter extends AbstractInterpreter
         // minus:
         $integerClass->addMethod('minus:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $argClass = $args[0]->getClass()->getName();
+                if ($argClass != 'Integer') {
+                    $this->stderr->writeString("Substraction by $argClass is not allowed\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
                 $result = $receiver->getInternalValue() - $args[0]->getInternalValue();
                 return new SOLObject($this->findClass('Integer'), $result);
             }
@@ -297,6 +308,11 @@ class Interpreter extends AbstractInterpreter
         // multiplyBy:
         $integerClass->addMethod('multiplyBy:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $argClass = $args[0]->getClass()->getName();
+                if ($argClass != 'Integer') {
+                    $this->stderr->writeString("Multiplication by $argClass is not allowed\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
                 $result = $receiver->getInternalValue() * $args[0]->getInternalValue();
                 return new SOLObject($this->findClass('Integer'), $result);
             }
@@ -306,6 +322,11 @@ class Interpreter extends AbstractInterpreter
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 if ($args[0]->getInternalValue() == 0) {
                     $this->stderr->writeString("Division by 0 is not allowed\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
+                $argClass = $args[0]->getClass()->getName();
+                if ($argClass != 'Integer') {
+                    $this->stderr->writeString("Division by $argClass is not allowed\n");
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = intdiv((int) $receiver->getInternalValue(), (int) $args[0]->getInternalValue());
@@ -328,9 +349,6 @@ class Interpreter extends AbstractInterpreter
         // TODO
         $this->classes['Integer'] = $integerClass;
 
-        $blockClass = new SOLClass('Block', 'Object');
-        $this->classes['Block'] = $blockClass;
-
         // Nil
         $nilClass = new SOLClass('Nil', 'Object');
         // asString
@@ -342,8 +360,128 @@ class Interpreter extends AbstractInterpreter
         ));
         $this->classes['Nil'] = $nilClass;
 
+        // String
         $stringClass = new SOLClass('String', 'Object');
+        // read
+        $stringClass->addMethod('read', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $input = fgets(STDIN);
+                if ($input === false) {
+                    $input = '';
+                } else {
+                    $input = rtrim($input, "\n\r");
+                }
+                return new SOLObject($this->findClass('String'), $input);
+            }
+        ));
+        // print
+        $stringClass->addMethod('print', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $value = $receiver->getInternalValue();
+                if (!is_string($value)) {
+                    $this->stderr->writeString("Error: Invalid string for print\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
+                $this->stdout->writeString($value);
+                return $receiver;
+            }
+        ));
+        // equalTo:
+        $stringClass->addMethod('equalTo:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $receiverValue = $receiver->getInternalValue();
+                $argValue = $args[0]->getInternalValue();
+                $argClass = $args[0]->getClass()->getName();
+                if ($argClass !== 'String') {
+                    $this->stderr->writeString("Error: Invalid string for equalTo:\n");
+                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
+                }
+                $trueClass = $this->findClass('True');
+                $falseClass = $this->findClass('False');
+                return new SOLObject($receiverValue === $argValue ? $trueClass : $falseClass, null);
+            }
+        ));
+        // asString
+        $stringClass->addMethod('asString', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return $receiver;
+            }
+        ));
         $this->classes['String'] = $stringClass;
+        // asInteger
+        $stringClass->addMethod('asInteger', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $receiverValue = $receiver->getInternalValue();
+                $intValue = filter_var($receiverValue, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+                if ($intValue !== null) {
+                    $integerClass = $this->findClass('Integer');
+                    return new SOLObject($integerClass, (string)$intValue);
+                }
+                $nilClass = $this->findClass('Nil');
+                return new SOLObject($nilClass, null);
+            }
+        ));
+        // concatenateWith:
+        $stringClass->addMethod('concatenateWith:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                $receiverValue = $receiver->getInternalValue();
+                $argClass = $args[0]->getClass()->getName();
+                if ($argClass !== 'String') {
+                    $nil = $this->findClass('Nil');
+                    return new SOLObject($nil, null);
+                }
+                return new SOLObject($this->findClass('String'), $receiverValue . $args[0]->getInternalValue());
+                
+            }
+        ));
+        // startsWith:endsBefore:
+        $stringClass->addMethod('startsWith:endsBefore:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($stringClass): SOLObject {
+                $receiverValue = $receiver->getInternalValue();
+                $startObj = $args[0];
+                $endObj = $args[1];
+
+                // Check if arguments are Integer objects
+                $isIntStart = $startObj->getClass()->getName() === 'Integer';
+                $isIntEnd = $endObj->getClass()->getName() === 'Integer';
+                if (!$isIntStart || !$isIntEnd) {
+                    $nilClass = $this->findClass('Nil');
+                    return new SOLObject($nilClass, null);
+                }
+
+                // Get integer values (stored as strings)
+                $start = $startObj->getInternalValue();
+                $end = $endObj->getInternalValue();
+
+                // Validate positive, non-zero integers
+                if (!preg_match('/^[1-9]\d*$/', $start) || !preg_match('/^[1-9]\d*$/', $end)) {
+                    $nilClass = $this->findClass('Nil');
+                    return new SOLObject($nilClass, null);
+                }
+
+                // Convert to integers for calculation
+                $start = (int)$start;
+                $end = (int)$end;
+
+                // Check if difference <= 0
+                if ($end - $start <= 0) {
+                    return new SOLObject($stringClass, '');
+                }
+
+                // Extract substring (1-based to 0-based)
+                $length = $end - $start;
+                $substring = substr($receiverValue, $start - 1, $length);
+                if ($substring === false) {
+                    $substring = ''; // Handle edge cases (e.g., out-of-bounds)
+                }
+
+                return new SOLObject($stringClass, $substring);
+            }
+        ));
+
+        // Block
+        $blockClass = new SOLClass('Block', 'Object');
+        $this->classes['Block'] = $blockClass;
     }
 
     /**
