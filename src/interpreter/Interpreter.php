@@ -31,6 +31,40 @@ class Interpreter extends AbstractInterpreter
         return $this->classes[$name];
     }
 
+    public function isMemberOf(SOLClass $member, string $inheritedClass): bool
+    {
+        $currentClass = $member;
+        while ($currentClass !== null) {
+            if ($currentClass->getName() === $inheritedClass) {
+                return true;
+            }
+            $parentName = $currentClass->getParentName();
+            if ($parentName === null) {
+                return false;
+            }
+            $currentClass = $this->findClass($parentName);
+        }
+        return false;
+    }
+
+    public function hasMethod(SOLClass $class, string $selector): bool
+    {
+        $method = $class->getMethod($selector);
+        if ($method !== null) {
+            return true;
+        }
+
+        // Check parent class
+        $parentName = $class->getParentName();
+        if ($parentName !== null) {
+            $parentClass = $this->findClass($parentName);
+            if ($parentClass !== null) {
+                return $this->hasMethod($parentClass, $selector);
+            }
+        }
+        return false;
+    }
+
     public function findMethod(SOLClass $class, string $selector): ?SOLMethod
     {
         $method = $class->getMethod($selector);
@@ -76,12 +110,12 @@ class Interpreter extends AbstractInterpreter
 
         $mainClass = $this->classes["Main"];
         $runMethod = $mainClass->getMethod("run");
-        $runBlock = $runMethod->getBlock();
-        if ($runBlock === null) {
+        if ($runMethod === null) {
             $this->stderr->writeString("Error: run method not found in Main\n");
             exit(ReturnCode::PARSE_MAIN_ERROR);
         }
 
+        $runBlock = $runMethod->getBlock();
         // Create instance of main class
         $mainObj = new SOLObject($mainClass);
 
@@ -91,18 +125,18 @@ class Interpreter extends AbstractInterpreter
 
         // Create block object for run method
         $lastObj = $this->interpretBlock($runBlock, $mainObj, [], $globalEnv);
-        //if ($lastObj === null) {
-        //    $this->stdout->writeString("Run object results in null\n");
-        //} elseif ($lastObj instanceof SOLObject) {
-        //    $this->stdout->writeString("Last value is instance of SOLObject\n");
-        //    $className = $lastObj->getClass()->getName();
-        //    $value = $lastObj->getInternalValue();
-        //    if (is_scalar($value)) {
-        //        $this->stdout->writeString("[$className: $value]\n");
-        //    } else {
-        //        $this->stdout->writeString("[$className]\n");
-        //    }
-        //}
+        // if ($lastObj === null) {
+        //     $this->stdout->writeString("Run object results in null\n");
+        // } elseif ($lastObj instanceof SOLObject) {
+        //     $this->stdout->writeString("Last value is instance of SOLObject\n");
+        //     $className = $lastObj->getClass()->getName();
+        //     $value = $lastObj->getInternalValue();
+        //     if (is_scalar($value)) {
+        //         $this->stdout->writeString("[$className: $value]\n");
+        //     } else {
+        //         $this->stdout->writeString("[$className]\n");
+        //     }
+        // }
         
         return ReturnCode::OK;
     }
@@ -119,8 +153,15 @@ class Interpreter extends AbstractInterpreter
         $blockEnv = new Environment($env);
         // Assign args to params
         foreach ($block->getParams() as $i => $param) {
-            // Should args be objects?
-            $blockEnv->set($param, $args[$i] ?? null);
+            if (!isset($args[$i])) {
+                $this->stderr->writeString("Error: Missing argument for parameter $param at index $i\n");
+                exit(ReturnCode::INTERPRET_TYPE_ERROR);
+            }
+            // Extract the internal value of the argument
+            $argval = $args[$i]->getInternalValue();
+            // Bind the parameter to an SOLObject wrapping the value
+            $class = $this->findClass($args[$i]->getClass()->getName());
+            $blockEnv->set($param, new SOLObject($class, $argval));
         }
         $blockEnv->set("self", $target);
         $lastValue = null;
@@ -136,7 +177,6 @@ class Interpreter extends AbstractInterpreter
         $varName = $stmt->getVarName();
         $expr = $stmt->getExpr();
         $value = $this->evaluateExpression($expr, $target, $env);
-        // Set variable in current scope and assign var/object to it
         $env->set($varName, $value);
         return $value;
     }
@@ -175,6 +215,13 @@ class Interpreter extends AbstractInterpreter
 
             // Find method in receiver class
             $class = $receiver->getClass();
+            
+            // Handle potential self reference
+            $selfObj = $this->handleSelf($receiver, $selector, $args, $env);
+            if ($selfObj !== null) {
+                return $selfObj;
+            }
+
             $method = $this->findMethod($class, $selector);
 
             // evaluate method if its native or user defined
@@ -190,6 +237,40 @@ class Interpreter extends AbstractInterpreter
         return null;
     }
 
+    /**
+     * @param array<mixed> $args
+     */
+    private function handleSelf(SOLObject $receiver, string $msg, array $args, Environment $env): ?SOLObject
+    {
+        $self = $env->get("self");
+        if ($self !== $receiver) {
+            return null;
+        }
+
+        if ($this->hasMethod($self->getClass(), $msg)) {
+            $method = $this->findMethod($self->getClass(), $msg);
+            if ($method->isNative()) {
+                $native = $method->getNative();
+                return $native($receiver, $args, $env);
+            }
+            else {
+                $block = $method->getBlock();
+                return $this->interpretBlock($block, $receiver, $args, $env);
+            }
+        }
+
+        if (str_ends_with($msg, ':')) {
+            $attrName = rtrim($msg, ':'); // Remove trailing :
+            $receiver->setVar($attrName, $args[0]);
+            return $receiver;
+        }
+        $value = $receiver->getVar($msg);
+        if ($value !== null) {
+            return $value;
+        }
+        exit(ReturnCode::INTERPRET_DNU_ERROR);
+    }
+
     private function initializeBuiltIn(): void
     {
         // True
@@ -198,6 +279,49 @@ class Interpreter extends AbstractInterpreter
         $trueClass->addMethod('not', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 return new SOLObject($this->findClass('False'), null);
+            }
+        ));
+        $trueClass->addMethod('and:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                if (count($args) !== 1 || $args[0]->getClass()->getName() !== 'Block') {
+                    $this->stderr->writeString("Error: and: expects 1 Block argument\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if (!$receiver->getClass()->getName() == 'False') {
+                    return new SOLObject($this->findClass('False'), null);
+                }
+                else {
+                    $argResult = $this->interpretBlock($args[0]->getInternalValue(), $receiver, [], $env);
+                    if ($argResult->getClass()->getName() === 'False') {
+                        return new SOLObject($this->findClass('False'), null);
+                    }
+                }
+                return new SOLObject($this->findClass('True'), null);
+            }
+        ));
+        // or:
+        $trueClass->addMethod('or:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                if (count($args) !== 1 || $args[0]->getClass()->getName() !== 'Block') {
+                    $this->stderr->writeString("Error: or: expects 1 Block argument\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                return $receiver;
+            }
+        ));
+        // ifTrue:ifFalse:
+        $trueClass->addMethod('ifTrue:ifFalse:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): ?SOLObject {
+                if (count($args) !== 2 || $args[0]->getClass()->getName() !== 'Block' || $args[1]->getClass()->getName() !== 'Block') {
+                    $this->stderr->writeString("Error: ifTrue:ifFalse: expects 2 Block arguments\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if ($receiver->getClass()->getName() === 'True') {
+                    return $this->interpretBlock($args[0]->getInternalValue(), $receiver, [], $env);
+                }
+                else {
+                    return $this->interpretBlock($args[1]->getInternalValue(), $receiver, [], $env);
+                }
             }
         ));
         $this->classes['True'] = $trueClass;
@@ -209,17 +333,51 @@ class Interpreter extends AbstractInterpreter
                 return new SOLObject($this->findClass('True'), null);
             }
         ));
+        $falseClass->addMethod('or:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                if (count($args) !== 1 || $args[0]->getClass()->getName() !== 'Block') {
+                    $this->stderr->writeString("Error: or: expects 1 Block argument\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                return new SOLObject($this->findClass("False"), null);
+            }
+        ));
+        $falseClass->addMethod('ifTrue:ifFalse:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): ?SOLObject {
+                if (count($args) !== 2 || $args[0]->getClass()->getName() !== 'Block' || $args[1]->getClass()->getName() !== 'Block') {
+                    $this->stderr->writeString("Error: ifTrue:ifFalse: expects 2 Block arguments\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if ($receiver->getClass()->getName() === 'False') {
+                    return $this->interpretBlock($args[1]->getInternalValue(), $receiver, [], $env);
+                }
+                else {
+                    return $this->interpretBlock($args[0]->getInternalValue(), $receiver, [], $env);
+                }
+            }
+        ));
         $this->classes['False'] = $falseClass;
-
+        
         // Object
         $objectClass = new SOLClass('Object', null);
+        $objectClass->addMethod('new', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return new SOLObject($this->findClass($receiver->getClass()->getName()));
+            }
+        ));
+        $objectClass->addMethod('from:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): SOLObject {
+                return new SOLObject($this->findClass($receiver->getClass()->getName()), $args[0]->getInternalValue());
+            }
+        ));
         // identicalTo
         $objectClass->addMethod('identicalTo:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 $trueClass = $this->findClass('True');
                 $falseClass = $this->findClass('False');
-                $isIdentical = $receiver === $args[0];
-                return new SOLObject($isIdentical ? $trueClass : $falseClass, null);
+                $isIdentical = $receiver->getClass()->getName() === $args[0]->getClass()->getName();
+                $isIdentical2 = $receiver->getInternalValue() === $args[0]->getInternalValue();
+                return new SOLObject(($isIdentical and $isIdentical2) ? $trueClass : $falseClass, null);
             }
         ));
         // equalTo
@@ -252,6 +410,7 @@ class Interpreter extends AbstractInterpreter
         // is{cLass} all return false
         $falseClass = $this->findClass('False');
         $falseInstance = new SOLObject($falseClass, null); // Instance False
+        $trueInstance = new SOLObject($trueClass, null); // Instance False
 
         $objectClass->addMethod('isNumber', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env) use ($falseInstance): SOLObject {
@@ -298,22 +457,21 @@ class Interpreter extends AbstractInterpreter
         // plus:
         $integerClass->addMethod('plus:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
-                $argClass = $args[0]->getClass()->getName();
-                if ($argClass != 'Integer') {
-                    $this->stderr->writeString("Addition by $argClass is not allowed\n");
+                $argClass = $args[0]->getClass();
+                if (!$this->isMemberOf($argClass, "Integer")) {
+                    $argClassName = $argClass->getName();
+                    $this->stderr->writeString("Addition by $argClassName is not allowed\n");
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = $receiver->getInternalValue() + $args[0]->getInternalValue();
-                $rec = $receiver->getInternalValue();
-                $re = $args[0]->getInternalValue();
                 return new SOLObject($this->findClass('Integer'), $result);
             }
         ));
         // minus:
         $integerClass->addMethod('minus:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
-                $argClass = $args[0]->getClass()->getName();
-                if ($argClass != 'Integer') {
+                $argClass = $args[0]->getClass();
+                if (!$this->isMemberOf($argClass, "Integer")) {
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = $receiver->getInternalValue() - $args[0]->getInternalValue();
@@ -323,9 +481,10 @@ class Interpreter extends AbstractInterpreter
         // multiplyBy:
         $integerClass->addMethod('multiplyBy:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
-                $argClass = $args[0]->getClass()->getName();
-                if ($argClass != 'Integer') {
-                    $this->stderr->writeString("Multiplication by $argClass is not allowed\n");
+                $argClass = $args[0]->getClass();
+                if (!$this->isMemberOf($argClass, "Integer")) {
+                    $argClassName = $argClass->getName();
+                    $this->stderr->writeString("Multiplication by $argClassName is not allowed\n");
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = $receiver->getInternalValue() * $args[0]->getInternalValue();
@@ -339,9 +498,10 @@ class Interpreter extends AbstractInterpreter
                     $this->stderr->writeString("Division by 0 is not allowed\n");
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
-                $argClass = $args[0]->getClass()->getName();
-                if ($argClass != 'Integer') {
-                    $this->stderr->writeString("Division by $argClass is not allowed\n");
+                $argClass = $args[0]->getClass();
+                if (!$this->isMemberOf($argClass, "Integer")) {
+                    $argClassName = $argClass->getName();
+                    $this->stderr->writeString("Division by $argClassName is not allowed\n");
                     exit(ReturnCode::INTERPRET_VALUE_ERROR);
                 }
                 $result = intdiv((int) $receiver->getInternalValue(), (int) $args[0]->getInternalValue());
@@ -361,6 +521,11 @@ class Interpreter extends AbstractInterpreter
                 return $receiver;
             }
         ));
+        $integerClass->addMethod('isNumber', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($trueInstance): SOLObject {
+                return $trueInstance;
+            }
+        ));
         // timeRepeat
         // notimplementedyet
         $this->classes['Integer'] = $integerClass;
@@ -372,6 +537,11 @@ class Interpreter extends AbstractInterpreter
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 $stringClass = $this->findClass('String');
                 return new SOLObject($stringClass, 'nil');
+            }
+        ));
+        $nilClass->addMethod('isNil', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($trueInstance): SOLObject {
+                return $trueInstance;
             }
         ));
         $this->classes['Nil'] = $nilClass;
@@ -402,11 +572,6 @@ class Interpreter extends AbstractInterpreter
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 $receiverValue = $receiver->getInternalValue();
                 $argValue = $args[0]->getInternalValue();
-                $argClass = $args[0]->getClass()->getName();
-                if ($argClass !== 'String') {
-                    $this->stderr->writeString("Error: Invalid string for equalTo:\n");
-                    exit(ReturnCode::INTERPRET_VALUE_ERROR);
-                }
                 $trueClass = $this->findClass('True');
                 $falseClass = $this->findClass('False');
                 return new SOLObject($receiverValue === $argValue ? $trueClass : $falseClass, null);
@@ -416,6 +581,11 @@ class Interpreter extends AbstractInterpreter
         $stringClass->addMethod('asString', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 return $receiver;
+            }
+        ));
+        $stringClass->addMethod('isString', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($trueInstance): SOLObject {
+                return $trueInstance;
             }
         ));
         $this->classes['String'] = $stringClass;
@@ -436,8 +606,8 @@ class Interpreter extends AbstractInterpreter
         $stringClass->addMethod('concatenateWith:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 $receiverValue = $receiver->getInternalValue();
-                $argClass = $args[0]->getClass()->getName();
-                if ($argClass !== 'String') {
+                $argClass = $args[0]->getClass();
+                if (!$this->isMemberOf($argClass, "String")) {
                     $nil = $this->findClass('Nil');
                     return new SOLObject($nil, null);
                 }
@@ -453,8 +623,8 @@ class Interpreter extends AbstractInterpreter
                 $endObj = $args[1];
 
                 // Check if arguments are Integer objects
-                $isIntStart = $startObj->getClass()->getName() === 'Integer';
-                $isIntEnd = $endObj->getClass()->getName() === 'Integer';
+                $isIntStart = $this->isMemberOf($startObj->getClass(), "Integer");
+                $isIntEnd = $this->isMemberOf($endObj->getClass(), "Integer");
                 if (!$isIntStart || !$isIntEnd) {
                     $nilClass = $this->findClass('Nil');
                     return new SOLObject($nilClass, null);
@@ -489,6 +659,65 @@ class Interpreter extends AbstractInterpreter
 
         // Block
         $blockClass = new SOLClass('Block', 'Object');
+        $blockClass->addMethod('isBlock', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env) use ($trueInstance): SOLObject {
+                return $trueInstance;
+            }
+        ));
+        // value (0 arguments)
+        $blockClass->addMethod('value', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): mixed {
+                $block = $receiver->getInternalValue();
+                if (!$block instanceof SOLBlock) {
+                    $this->stderr->writeString("Error: Receiver is not a block\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if (count($block->getParams()) !== 0) {
+                    $this->stderr->writeString("Error: Block expects " . count($block->getParams()) . " arguments, but 0 provided\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                return $this->interpretBlock($block, $receiver, [], $env);
+            }
+        ));
+        // value: (1 argument)
+        $blockClass->addMethod('value:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): mixed {
+                $block = $receiver->getInternalValue();
+                if (!$block instanceof SOLBlock) {
+                    $this->stderr->writeString("Error: Receiver is not a block\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if (count($block->getParams()) !== 1) {
+                    $this->stderr->writeString("Error: Block expects " . count($block->getParams()) . " arguments, but 1 provided\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if (count($args) !== 1) {
+                    $this->stderr->writeString("Error: value: expects 1 argument, got " . count($args) . "\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                return $this->interpretBlock($block, $receiver, $args, $env);
+            }
+        ));
+        // value:value: (2 arguments)
+        $blockClass->addMethod('value:value:', new SOLMethod(
+            function (SOLObject $receiver, array $args, Environment $env): mixed {
+                $block = $receiver->getInternalValue();
+                if (!$block instanceof SOLBlock) {
+                    $this->stderr->writeString("Error: Receiver is not a block\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if (count($block->getParams()) !== 2) {
+                    $this->stderr->writeString("Error: Block expects " . count($block->getParams()) . " arguments, but 2 provided\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                if (count($args) !== 2) {
+                    $this->stderr->writeString("Error: value:value: expects 2 arguments, got " . count($args) . "\n");
+                    exit(ReturnCode::INTERPRET_TYPE_ERROR);
+                }
+                return $this->interpretBlock($block, $receiver, $args, $env);
+            }
+        ));
+        // whileTrue:
         $blockClass->addMethod('whileTrue:', new SOLMethod(
             function (SOLObject $receiver, array $args, Environment $env): SOLObject {
                 $receiverBlock = $receiver->getInternalValue();

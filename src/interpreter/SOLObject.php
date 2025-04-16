@@ -30,6 +30,11 @@ class SOLObject
         return $this->internalValue;
     }
 
+    public function updateInternalValue(mixed $newValue): void
+    {
+        $this->internalValue = $newValue;
+    }
+
     public function setVar(string $name, SOLObject $value): void
     {
         $this->instanceVars[$name] = $value;

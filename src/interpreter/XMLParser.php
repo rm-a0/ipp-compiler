@@ -102,41 +102,39 @@ class XMLParser
         $params = [];
         $statements = [];
         
-        // Parse parameters
-        foreach($blockNode->getElementsByTagName("parameter") as $paramNode) {
-            $paramName = $paramNode->getAttribute("name");
-            if (!empty($paramName)) {
-                $params[] = $paramName;
+        // Parse immediate children only
+        foreach ($blockNode->childNodes as $node) {
+            if ($node instanceof DOMElement) {
+                if ($node->tagName === "parameter") {
+                    $paramName = $node->getAttribute("name");
+                    if (!empty($paramName)) {
+                        $params[] = $paramName;
+                    }
+                } elseif ($node->tagName === "assign") {
+                    $varNode = $node->getElementsByTagName("var")->item(0);
+                    $exprNode = $node->getElementsByTagName("expr")->item(0);
+                    if ($varNode && $exprNode && $varNode->hasAttribute("name")) {
+                        $varName = $varNode->getAttribute("name");
+                        $expr = $this->parseExpression($exprNode);
+                        if ($expr === null) {
+                            $this->stderr->writeString("Invalid expression in assign to $varName\n");
+                            return null;
+                        }
+                        $statements[] = new SOLStatement($varName, $expr);
+                    } else {
+                        $this->stderr->writeString("Invalid assign in block\n");
+                        return null;
+                    }
+                } else {
+                    $this->stderr->writeString("Unexpected node in block: " . $node->tagName . "\n");
+                    return null;
+                }
             }
         }
         
-        // Parse assignments
-        foreach($blockNode->getElementsByTagName("assign") as $assignNode) {
-            $varNode = $assignNode->getElementsByTagName("var")->item(0);
-            $exprNode = $assignNode->getElementsByTagName("expr")->item(0);
-
-            if ($varNode && $exprNode && $varNode->hasAttribute("name")) {
-                $varName = $varNode->getAttribute("name");
-                $expr = $this->parseExpression($exprNode);
-                if ($expr === null) {
-                    $this->stderr->writeString("Invalid expression in assign to $varName\n");
-                    return null;
-                }
-                $statements[] = new SOLStatement($varName, $expr);
-            }
-            else {
-                $this->stderr->writeString("Invalid assign in block\n");
-                return null;
-            }
-        }
-
         return new SOLBlock($params, $statements);
     }
 
-    /**
-     * Parses expr element of the DOM document and creates expression object
-     * @return ?SOLExpression Expression object
-     */
     private function parseExpression(DOMElement $exprNode): ?SOLExpression
     {
         $expressionElement = null;
@@ -149,12 +147,10 @@ class XMLParser
                 $expressionElement = $child;
             }
         }
-
         if ($expressionElement === null) {
             $this->stderr->writeString("Expression missing valid child element\n");
             return null;
         }
-
         switch ($expressionElement->tagName) {
             case "literal":
                 $class = $expressionElement->getAttribute("class");
@@ -164,7 +160,6 @@ class XMLParser
                     return null;
                 }
                 return new SOLLiteral($class, $value);
-
             case "var":
                 $name = $expressionElement->getAttribute("name");
                 if (empty($name)) {
@@ -172,14 +167,12 @@ class XMLParser
                     return null;
                 }
                 return new SOLVariable($name);
-
             case "send":
                 $selector = $expressionElement->getAttribute("selector");
                 if (empty($selector)) {
                     $this->stderr->writeString("Message send missing selector\n");
                     return null;
                 }
-
                 $targetNode = null;
                 foreach ($expressionElement->childNodes as $node) {
                     if ($node instanceof DOMElement && $node->tagName === "expr") {
@@ -195,7 +188,6 @@ class XMLParser
                 if ($target === null) {
                     return null;
                 }
-
                 $args = [];
                 foreach ($expressionElement->childNodes as $node) {
                     if ($node instanceof DOMElement && $node->tagName === "arg") {
@@ -217,9 +209,7 @@ class XMLParser
                         $args[] = $argExpr;
                     }
                 }
-
                 return new SOLSend($selector, $target, $args);
-
             case "block":
                 $block = $this->parseBlock($expressionElement);
                 if ($block === null) {

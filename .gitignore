@@ -39,6 +39,8 @@ testdir/
 *.swo
 out.xml
 in*.txt
+is_it_ok.sh
+testdir
 
 # Cloned git repo
 ipp-core/
