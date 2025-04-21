@@ -16,9 +16,18 @@ use IPP\Core\FileInputReader;
 
 class Interpreter extends AbstractInterpreter
 {
-    /** @var array<string, SOLClass> */
+    /**
+     * @var array<string, SOLClass> Map of class names to their corresponding SOLClass instances.
+     */
     private array $classes = [];
 
+    /**
+     * Find a class by name, optionally handling a 'class' indirection.
+     *
+     * @param string $name Name of the class or the string 'class'
+     * @param string|null $value Value used when name is 'class'
+     * @return SOLClass|null Returns the found class or null if not found
+     */
     public function findClass(string $name, ?string $value = null): ?SOLClass
     {
         if ($name == 'class') {
@@ -31,6 +40,13 @@ class Interpreter extends AbstractInterpreter
         return $this->classes[$name];
     }
 
+    /**
+     * Checks if a class is a subclass of another class.
+     *
+     * @param SOLClass $member Class to check
+     * @param string $inheritedClass Name of the parent class
+     * @return bool True if $member is derived from $inheritedClass
+     */
     public function isMemberOf(SOLClass $member, string $inheritedClass): bool
     {
         $currentClass = $member;
@@ -47,6 +63,13 @@ class Interpreter extends AbstractInterpreter
         return false;
     }
 
+    /**
+     * Determines whether a method exists in a class or its parent hierarchy.
+     *
+     * @param SOLClass $class The class to search in
+     * @param string $selector The method name
+     * @return bool True if method is found
+     */
     public function hasMethod(SOLClass $class, string $selector): bool
     {
         $method = $class->getMethod($selector);
@@ -65,6 +88,13 @@ class Interpreter extends AbstractInterpreter
         return false;
     }
 
+    /**
+     * Finds a method in the given class or its parent classes.
+     *
+     * @param SOLClass $class Class to search in
+     * @param string $selector Method name
+     * @return SOLMethod|null Returns the found method or exits with error if not found
+     */
     public function findMethod(SOLClass $class, string $selector): ?SOLMethod
     {
         $method = $class->getMethod($selector);
@@ -85,6 +115,11 @@ class Interpreter extends AbstractInterpreter
         exit(ReturnCode::INTERPRET_DNU_ERROR);
     }
 
+    /**
+     * Executes the interpreter on the provided input XML.
+     *
+     * @return int ReturnCode indicating the result of execution
+     */
     public function execute(): int
     {
         $dom = $this->loadSource();
@@ -124,29 +159,19 @@ class Interpreter extends AbstractInterpreter
         $globalEnv->set("self", $mainObj);
 
         // Create block object for run method
-        $lastObj = $this->interpretBlock($runBlock, $mainObj, [], $globalEnv);
-        // if ($lastObj === null) {
-        //     $this->stdout->writeString("Run object results in null\n");
-        // } elseif ($lastObj instanceof SOLObject) {
-        //     $this->stdout->writeString("Last value is instance of SOLObject\n");
-        //     $className = $lastObj->getClass()->getName();
-        //     $value = $lastObj->getInternalValue();
-        //     if (is_scalar($value)) {
-        //         $this->stdout->writeString("[$className: $value]\n");
-        //     } else {
-        //         $this->stdout->writeString("[$className]\n");
-        //     }
-        // }
+        $this->interpretBlock($runBlock, $mainObj, [], $globalEnv);
         
         return ReturnCode::OK;
     }
 
     /**
-     * Interprets block
-     * @param SOLBlock $block
-     * @param SOLObject $target
-     * @param array<mixed> $args
-     * @param Environment $env
+     * Executes a block of code.
+     *
+     * @param SOLBlock $block The block to execute
+     * @param SOLObject $target Target object ('self') for this block
+     * @param array<mixed> $args Arguments passed to the block
+     * @param Environment $env Current environment
+     * @return mixed The last evaluated result of the block
      */
     private function interpretBlock(SOLBlock $block, SOLObject $target, array $args, Environment $env): mixed
     {
@@ -172,6 +197,14 @@ class Interpreter extends AbstractInterpreter
         return $lastValue;
     }
 
+    /**
+     * Interprets a single statement and updates the environment.
+     *
+     * @param SOLStatement $stmt Statement to interpret
+     * @param SOLObject $target Current target object
+     * @param Environment $env Environment where the statement runs
+     * @return mixed The result of the evaluated expression
+     */
     private function interpretStatement(SOLStatement $stmt, SOLObject $target, Environment $env): mixed
     {
         $varName = $stmt->getVarName();
@@ -181,6 +214,14 @@ class Interpreter extends AbstractInterpreter
         return $value;
     }
 
+    /**
+     * Evaluates an expression and returns its value.
+     *
+     * @param SOLExpression $expr Expression to evaluate
+     * @param SOLObject $target Target object ('self') context
+     * @param Environment $env Current environment
+     * @return mixed Resulting value of the expression
+     */
     private function evaluateExpression(SOLExpression $expr, SOLObject $target, Environment $env): mixed
     {
         if ($expr instanceof SOLLiteral) {
@@ -238,7 +279,13 @@ class Interpreter extends AbstractInterpreter
     }
 
     /**
-     * @param array<mixed> $args
+     * Handles self-reference and attribute access.
+     *
+     * @param SOLObject $receiver The receiving object
+     * @param string $msg Message or method name
+     * @param array<mixed> $args Arguments to apply
+     * @param Environment $env Current environment
+     * @return SOLObject|null The result if handled, or null
      */
     private function handleSelf(SOLObject $receiver, string $msg, array $args, Environment $env): ?SOLObject
     {
@@ -271,6 +318,12 @@ class Interpreter extends AbstractInterpreter
         exit(ReturnCode::INTERPRET_DNU_ERROR);
     }
 
+    /**
+     * Initializes built in method, classes and pupulates
+     * the associative array containing classes.
+     *
+     * @return void
+     */
     private function initializeBuiltIn(): void
     {
         // True
@@ -751,6 +804,7 @@ class Interpreter extends AbstractInterpreter
 
     /**
      * Loads the XML source from file or stdin using the SourceReader.
+     * 
      * @return ?DOMDocument Loaded DOM document or null
      */
     private function loadSource(): ?DOMDocument

@@ -25,6 +25,3 @@ SOL25 supports classes, methods, blocks, message sends, and built-in types like 
     - `mixed` internal value (this can be SOLObject, SOLBlockExpression, string ...)
 
 ### SOL Classes (AST nodes)
-
-## Class Diagram
-![class-diagram-detailed](class-diagram-detailed.png)

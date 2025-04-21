@@ -19,6 +19,7 @@ class SOLBlock
 
     /**
      * Constructor for SOLBlock
+     * 
      * @param array<string> $params
      * @param array<SOLStatement> $statements
      */
@@ -30,6 +31,7 @@ class SOLBlock
 
     /**
      * Getter for parameters
+     * 
      * @return array<string> The array containing parameters
      */
     public function getParams(): array
@@ -39,6 +41,7 @@ class SOLBlock
 
     /** 
      * Getter for statements
+     * 
      * @return array<SOLStatement>  The array containing statements
      */
     public function getStatements(): array
@@ -46,6 +49,11 @@ class SOLBlock
         return $this->statements;
     }
 
+    /** 
+     * Getter for parameter count
+     * 
+     * @return int Number of elements i parameter array
+     */
     public function getParameterCount(): int
     {
         return count($this->params);

@@ -16,6 +16,8 @@ class XMLParser
 {
     /** @var array<string, SOLClass> */
     private array $classes = [];
+
+    /** @var OutputWriter $stderr */
     private OutputWriter $stderr;
 
     public function __construct(OutputWriter $stderr)
@@ -24,8 +26,13 @@ class XMLParser
     }
 
     /**
-     * Parses root of the DOM document
-     * @return int The appropriate return code
+     * Parses the root element of the DOM document.
+     * 
+     * The root element must be a `<program>` tag with the `language="SOL25"` attribute.
+     * All classes, methods, and blocks within the XML are parsed and converted to SOL objects.
+     * 
+     * @param DOMElement $root The root element of the XML document to parse.
+     * @return int Return code indicating the success or failure of the operation.
      */
     public function parse(DOMElement $root): int
     {
@@ -47,8 +54,12 @@ class XMLParser
     }
 
     /**
-     * Parses class element of the DOM document and creates class object
-     * @return int The appropriate return code
+     * Parses a class element from the XML document.
+     * 
+     * Creates a SOLClass object for the parsed class and its methods.
+     *
+     * @param DOMElement $classNode The `<class>` element to parse.
+     * @return int Return code indicating the success or failure of the operation.
      */
     private function parseClass(DOMElement $classNode): int
     {
@@ -94,8 +105,10 @@ class XMLParser
     }
 
     /**
-     * Parses block element of the DOM document and creates block object
-     * @return ?SOLBlock Block object
+     * Parses a block element from the XML document and creates a SOLBlock object.
+     * 
+     * @param DOMElement $blockNode The `<block>` element to parse.
+     * @return ?SOLBlock The parsed SOLBlock object, or null if the block is invalid.
      */
     private function parseBlock(DOMElement $blockNode): ?SOLBlock
     {
@@ -135,6 +148,14 @@ class XMLParser
         return new SOLBlock($params, $statements);
     }
 
+    /**
+     * Parses an expression node and converts it to a SOLExpression object.
+     * 
+     * The method supports literals, variables, method sends, and block expressions.
+     *
+     * @param DOMElement $exprNode The `<expr>` element to parse.
+     * @return ?SOLExpression The corresponding SOLExpression object, or null if parsing failed.
+     */
     private function parseExpression(DOMElement $exprNode): ?SOLExpression
     {
         $expressionElement = null;
@@ -224,8 +245,9 @@ class XMLParser
     }
 
     /**
-     * Getter for the class array
-     * @return array<string, SOLClass> The array containing parsed classes
+     * Getter for the parsed classes.
+     * 
+     * @return array<string, SOLClass> The array of parsed SOL classes.
      */
     public function getClasses(): array
     {
